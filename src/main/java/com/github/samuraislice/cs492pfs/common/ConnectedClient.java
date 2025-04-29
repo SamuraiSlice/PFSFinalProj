@@ -1,22 +1,24 @@
 package com.github.samuraislice.cs492pfs.common;
 
+import javax.crypto.Cipher;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 
 public class ConnectedClient {
 
   private final DataOutputStream stream;
-  private final BigInteger sharedSecret; // TODO likely won't be bigint later
+  private final Cipher encoder;
 
-  public ConnectedClient(@NotNull DataOutputStream stream, @NotNull BigInteger sharedSecret) {
+  public ConnectedClient(@NotNull DataOutputStream stream, Cipher encoder) {
     this.stream = stream;
-    this.sharedSecret = sharedSecret;
+    this.encoder = encoder;
   }
 
-  public void sendMessage(@Nullable String message) throws IOException {
+  public void sendMessage(@Nullable String message) throws GeneralSecurityException, IOException {
     System.out.printf("DEBUG: sending message %s%n", message);
     if (message == null || message.isBlank()) {
       throw new IOException("No message provided!");
@@ -24,9 +26,9 @@ public class ConnectedClient {
 
     message = message.trim();
 
-    // TODO encrypt message
+    byte[] encoded = encoder.doFinal(message.getBytes(StandardCharsets.UTF_8));
 
-    PacketUtil.sendMessage(stream, message);
+    PacketUtil.sendPacket(stream, encoded);
   }
 
 }

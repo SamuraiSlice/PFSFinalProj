@@ -2,6 +2,10 @@ package com.github.samuraislice.cs492pfs.server;
 
 import com.github.samuraislice.cs492pfs.common.ConnectedClient;
 import com.github.samuraislice.cs492pfs.common.PacketUtil;
+import javax.crypto.Cipher;
+import javax.crypto.KeyAgreement;
+import javax.crypto.spec.DHParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Range;
@@ -11,6 +15,13 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.PublicKey;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -72,8 +83,6 @@ public class Server implements AutoCloseable {
     // If thread is alive, complain. Otherwise, all done!
     if (thread.isAlive()) {
       logger.warning(() -> String.format("Server thread failed to shut down after %d seconds!", shutdownTimeout));
-    } else {
-      serverThread.set(null);
     }
   }
 
@@ -89,55 +98,100 @@ public class Server implements AutoCloseable {
 
     @Override
     public void run() {
-      // TODO netty or similar? Multiple connections?
-      //  A future problem.
       logger.info(() -> String.format("Starting server on port %d...", port));
       try (ServerSocket socket = new ServerSocket(port)) {
-        while (acceptingConnections.get()) {
+        while (acceptingConnections.get() && !interrupted()) {
           logger.info("Listening for connections.");
           try (Socket client = socket.accept()) {
             logger.info(() -> String.format("Accepted connection from %s", client.getRemoteSocketAddress()));
             handleConnection(client);
-
-            // TODO handle client stuff
           } catch (Exception e) {
+            currentClient.set(null);
             // TODO log handling
             logger.info("Client disconnected!");
-            logger.log(Level.INFO, "Client disconnection", e);
+            logger.log(Level.FINE, "Client disconnection", e);
           }
         }
       } catch (IOException e) {
+        serverThread.set(null);
         throw new RuntimeException(e);
       }
+      serverThread.set(null);
     }
 
   }
 
-  private void handleConnection(@NotNull Socket socket) throws IOException {
+  private void handleConnection(@NotNull Socket socket)
+      throws GeneralSecurityException, IOException {
+    socket.setSoTimeout((int) (PacketUtil.KEEPALIVE_INTERVAL * 2.5));
+    socket.setKeepAlive(true); // TODO is this enough?
+
+    // TODO Discuss: PFS without other stuff is largely useless, no guards against MitM etc.
+
     DataInputStream inputStream = new DataInputStream(socket.getInputStream());
-
-    byte[] data = PacketUtil.readPacket(inputStream, logger);
-    BigInteger prime = new BigInteger(data);
-    if (prime.compareTo(BigInteger.ONE) < 1) {
-      logger.warning(() -> String.format("Received prime value %s <= 1!", prime));
-      return;
-    }
-
-    data = PacketUtil.readPacket(inputStream, logger);
-    BigInteger generator = new BigInteger(data);
-    if (generator.compareTo(BigInteger.ONE) < 1) {
-      logger.warning(() -> String.format("Received generator value %s <= 1!", generator));
-      return;
-    }
-
-
-
     DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
 
-    // TODO client handling
-    //  Send new pubkey
-    //  Await messages
-    //  Periodic keepalives if no messages
+    byte[] sharedSecret = getSharedSecret(inputStream, outputStream);
+    logger.fine(String.format("Agreed on shared key %s (%d bits)", new BigInteger(sharedSecret).toString(16), sharedSecret.length * Byte.SIZE));
+
+    SecretKeySpec keySpec = new SecretKeySpec(sharedSecret, "AES");
+    // TODO investigate other paddings
+    Cipher encoder = Cipher.getInstance("AES/CBC/PKCS5Padding");
+    encoder.init(Cipher.ENCRYPT_MODE, keySpec);
+
+    ConnectedClient client = new ConnectedClient(outputStream, encoder);
+    currentClient.set(client);
+
+    Cipher decoder = Cipher.getInstance("AES/CBC/PKCS5Padding");
+    decoder.init(Cipher.DECRYPT_MODE, keySpec);
+
+    while (!socket.isClosed() && socket.isConnected()) {
+      byte[] data = PacketUtil.readPacket(inputStream, logger);
+      // TODO should use a signed quit or something.
+      if (data.length == 1 && data[0] == -1) {
+        break;
+      }
+      data = decoder.doFinal(data);
+
+      if (data.length > 0) {
+        listener.accept(client, new String(data, StandardCharsets.UTF_8));
+      }
+    }
+  }
+
+  private byte[] getSharedSecret(
+      @NotNull DataInputStream inputStream,
+      @NotNull DataOutputStream outputStream
+  ) throws GeneralSecurityException, IOException {
+
+    logger.fine("Awaiting DH parameters");
+    // Recieve client data. This contains prime, generator, and public key information.
+    byte[] data = PacketUtil.readPacket(inputStream, logger);
+    X509EncodedKeySpec keySpec = new X509EncodedKeySpec(data);
+    // TODO might be "DiffieHellman" for init (though algorithm returns "DH")
+    // https://docs.oracle.com/en/java/javase/21/docs/specs/security/standard-names.html#keyfactory-algorithms
+    KeyFactory factory = KeyFactory.getInstance("DH");
+    PublicKey clientKey = factory.generatePublic(keySpec);
+
+    if (!(clientKey.getParams() instanceof DHParameterSpec params)) {
+      throw new IOException("Invalid key parameters!");
+    }
+
+    // Initialize keypair using given prime and generator.
+    KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
+    keyGen.initialize(params);
+    KeyPair keyPair = keyGen.generateKeyPair();
+
+    // Send client the server public key.
+    logger.fine("Sending DH public key");
+    PacketUtil.sendPacket(outputStream, keyPair.getPublic().getEncoded());
+
+    KeyAgreement agreement = KeyAgreement.getInstance("DH");
+    agreement.init(keyPair.getPrivate());
+    agreement.doPhase(clientKey, true);
+
+    logger.fine("Generating shared secret.");
+    return agreement.generateSecret();
   }
 
 }

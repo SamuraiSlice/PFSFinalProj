@@ -10,29 +10,36 @@ import java.util.logging.Logger;
 public enum PacketUtil {
   ;
 
+  // TODO might not be necessary
+  public static final int KEEPALIVE_INTERVAL = 10;
+
   public static void quit(@NotNull DataOutputStream outputStream) throws IOException {
+    outputStream.writeInt(1);
     outputStream.write(-1);
   }
 
+  // TODO might not be necessary
   public static void keepalive(@NotNull DataOutputStream outputStream) throws IOException {
-    outputStream.write(0);
+    outputStream.writeInt(0);
   }
 
   public static void sendMessage(@NotNull DataOutputStream outputStream, @NotNull String message) throws IOException {
     byte[] bytes = message.getBytes(StandardCharsets.UTF_8);
-    outputStream.writeInt(bytes.length);
-    outputStream.write(bytes);
+    sendPacket(outputStream, bytes);
   }
 
-  public static void sendPacket(@NotNull DataOutputStream outputStream, @NotNull byte[] data) {
-
+  public static void sendPacket(
+      @NotNull DataOutputStream outputStream,
+      byte[] data
+  ) throws IOException {
+    outputStream.writeInt(data.length);
+    outputStream.write(data);
   }
 
   public static byte[] readPacket(@NotNull DataInputStream stream, @NotNull Logger logger) throws IOException {
     int length = stream.readInt();
     if (length < 0) {
-      // TODO handle at usages or retool? Exception to quit is kinda ugly
-      throw new IllegalArgumentException("Negative packet length");
+      throw new IOException("Cannot read negative-sized packet!");
     }
 
     byte[] data = new byte[length];
