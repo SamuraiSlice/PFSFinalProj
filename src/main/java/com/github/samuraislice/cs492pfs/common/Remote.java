@@ -8,12 +8,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 
-public class ConnectedClient {
+public class Remote {
 
   private final DataOutputStream stream;
   private final Cipher encoder;
 
-  public ConnectedClient(@NotNull DataOutputStream stream, Cipher encoder) {
+  public Remote(@NotNull DataOutputStream stream, @NotNull Cipher encoder) {
     this.stream = stream;
     this.encoder = encoder;
   }

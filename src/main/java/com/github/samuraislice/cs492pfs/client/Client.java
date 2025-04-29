@@ -1,8 +1,8 @@
 package com.github.samuraislice.cs492pfs.client;
 
-import com.github.samuraislice.cs492pfs.common.ConnectedClient;
+import com.github.samuraislice.cs492pfs.common.Remote;
+import com.github.samuraislice.cs492pfs.common.Connection;
 import com.github.samuraislice.cs492pfs.common.PacketUtil;
-import com.github.samuraislice.cs492pfs.server.Server;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -13,36 +13,49 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PublicKey;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 import java.util.logging.Logger;
 import javax.crypto.KeyAgreement;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Range;
 
-public abstract class Client implements AutoCloseable {
+public class Client extends Connection {
 
-  private final Server server;
-
-  public Client(@Range(from = 0, to = 65535) int port) {
-    this.server = new Server(port, this::handleMessage);
+  public Client(
+      @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener
+  ) {
+    this(listener, new AtomicBoolean());
   }
 
-  public void start() {
-    server.start();
+  public Client(
+      @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener,
+      @NotNull AtomicBoolean acceptingConnections
+  ) {
+    super(Logger.getLogger("PfsClient"), listener, acceptingConnections);
+  }
+
+  @Override
+  public void open() {
+    // TODO accept address and port in constructor, make this connect?
+    // TODO need a thread
+    //  might want to add a getThread method or similar to extract common code with server
   }
 
   public void connect(String address, int port) throws GeneralSecurityException, IOException {
-    // TODO need a thread to not block
-    //  Should also set server to not accept connections while connected here - shared?
-    Socket socket = new Socket(address, port);
-    DataInputStream inputStream = new DataInputStream(socket.getInputStream());
-    DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
-
-    byte[] secret = getSharedSecret(inputStream, outputStream);
-
-    // TODO encode/decode handling
+    if (!acceptingConnections.compareAndSet(false, true)) {
+      return;
+    }
+    try (Socket socket = new Socket(address, port)) {
+      handleConnection(socket);
+    } catch (GeneralSecurityException | IOException e) {
+      acceptingConnections.set(true);
+      throw e;
+    }
+    acceptingConnections.set(true);
   }
 
-  private byte[] getSharedSecret(
+  @Override
+  protected byte[] getSharedSecret(
       @NotNull DataInputStream inputStream,
       @NotNull DataOutputStream outputStream
   ) throws GeneralSecurityException, IOException {
@@ -69,10 +82,4 @@ public abstract class Client implements AutoCloseable {
     return agreement.generateSecret();
   }
 
-  protected abstract void handleMessage(@NotNull ConnectedClient sender, @NotNull String message);
-
-  @Override
-  public void close() {
-    server.close();
-  }
 }
