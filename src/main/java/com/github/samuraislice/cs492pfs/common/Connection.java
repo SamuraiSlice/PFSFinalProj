@@ -12,7 +12,6 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.logging.Logger;
@@ -20,7 +19,6 @@ import java.util.logging.Logger;
 public abstract class Connection implements AutoCloseable {
 
   protected final Logger logger;
-  protected final AtomicBoolean acceptingConnections;
   protected final AtomicReference<Thread> connectionThread = new AtomicReference<>();
   protected final AtomicReference<Remote> currentClient = new AtomicReference<>();
   private final BiConsumer<@NotNull Remote, @NotNull String> listener;
@@ -29,16 +27,6 @@ public abstract class Connection implements AutoCloseable {
       @NotNull Logger logger,
       @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener) {
     this.logger = logger;
-    this.listener = listener;
-    this.acceptingConnections = new AtomicBoolean();
-  }
-
-  protected Connection(
-      @NotNull Logger logger,
-      @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener,
-      @NotNull AtomicBoolean acceptingConnections) {
-    this.logger = logger;
-    this.acceptingConnections = acceptingConnections;
     this.listener = listener;
   }
 
@@ -49,13 +37,18 @@ public abstract class Connection implements AutoCloseable {
     socket.setSoTimeout((int) (PacketUtil.KEEPALIVE_INTERVAL * 2.5));
     socket.setKeepAlive(true); // TODO is this enough?
 
-    // TODO Discuss: PFS without other stuff is largely useless, no guards against MitM etc.
-
     DataInputStream inputStream = new DataInputStream(socket.getInputStream());
     DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
 
     byte[] sharedSecret = getSharedSecret(inputStream, outputStream);
     logger.fine(String.format("Agreed on shared key %s (%d bits)", new BigInteger(sharedSecret).toString(16), sharedSecret.length * Byte.SIZE));
+
+    // TODO PFS without other stuff is largely useless, no guards against MitM etc.
+    //  Post-discussion:
+    //  - add some form of public key encryption
+    //  - first connect: trust keypair
+    //  - store pubkey in encrypted keystore
+    //  - subsequent connects: mandate same keypair used (with override)
 
     SecretKeySpec keySpec = new SecretKeySpec(sharedSecret, "AES");
     // TODO investigate other paddings
@@ -68,10 +61,11 @@ public abstract class Connection implements AutoCloseable {
     Cipher decoder = Cipher.getInstance("AES/CBC/PKCS5Padding");
     decoder.init(Cipher.DECRYPT_MODE, keySpec);
 
-    while (!socket.isClosed() && socket.isConnected()) {
+    while (!socket.isClosed() && socket.isConnected() && !Thread.interrupted()) {
       byte[] data = PacketUtil.readPacket(inputStream, logger);
-      // TODO should use a signed quit or something.
+      // TODO quit should be signed.
       if (data.length == 1 && data[0] == -1) {
+        listener.accept(client, "Disconnected.");
         break;
       }
       data = decoder.doFinal(data);
@@ -93,9 +87,6 @@ public abstract class Connection implements AutoCloseable {
 
   @Override
   public void close() {
-    // Stop accepting connections.
-    this.acceptingConnections.set(false);
-
     Thread thread = this.connectionThread.get();
     // Already shut down?
     if (thread == null) {

@@ -1,8 +1,6 @@
 package com.github.samuraislice.cs492pfs;
 
 import com.github.samuraislice.cs492pfs.client.Client;
-import com.github.samuraislice.cs492pfs.common.Remote;
-import com.github.samuraislice.cs492pfs.server.Server;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -10,7 +8,6 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import java.util.function.BiConsumer;
 
 public class Launcher {
 
@@ -43,21 +40,9 @@ public class Launcher {
       return;
     }
 
-    BiConsumer<Remote, String> handler =
-        (client, message) -> System.out.printf("%s says: %s\n%n", "TODO", message);
-    try (
-        Server server = new Server(port, handler);
-        Client client = new Client(handler) // TODO client may move to execution of /connect
-    ) {
-      server.open();
+    try (Client client = new Client(port)) {
       client.open();
     }
-
-    // TODO intake commands
-    //  /connect <remote>
-    //  /exit
-    //  etc.
-    //  Treat non-commands as messages? For single client-client
 
   }
 

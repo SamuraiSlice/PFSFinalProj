@@ -23,23 +23,16 @@ import javax.crypto.spec.DHParameterSpec;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Range;
 
-public class Server extends Connection {
+public class ServerConnection extends Connection {
 
   private final int port;
+  protected final AtomicBoolean acceptingConnections = new AtomicBoolean();
 
-  public Server(
+  public ServerConnection(
       @Range(from = 0, to = 65535) int port,
       @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener
   ) {
-    this(port, listener, new AtomicBoolean());
-  }
-
-  public Server(
-      @Range(from = 0, to = 65535) int port,
-      @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener,
-      @NotNull AtomicBoolean acceptingConnections
-  ) {
-    super(Logger.getLogger("PfsServer"), listener, acceptingConnections);
+    super(Logger.getLogger("PfsServer"), listener);
     this.port = port;
   }
 
@@ -47,12 +40,19 @@ public class Server extends Connection {
   public void open() {
     if (!connectionThread.compareAndSet(null, new ServerThread())) {
       // If the server thread is running already, deny.
-      throw new IllegalStateException("Server is already running!");
+      throw new IllegalStateException("ServerConnection is already running!");
     } else {
       // Otherwise, start server thread.
       this.acceptingConnections.set(true);
       connectionThread.get().start();
     }
+  }
+
+  @Override
+  public void close() {
+    // Stop accepting connections.
+    this.acceptingConnections.set(false);
+    super.close();
   }
 
   // TODO extract to common class
@@ -104,7 +104,7 @@ public class Server extends Connection {
     public void run() {
       logger.info(() -> String.format("Starting server on port %d...", port));
       try (ServerSocket socket = new ServerSocket(port)) {
-        while (acceptingConnections.get() && !interrupted()) {
+        while (acceptingConnections.get() && !interrupted()) { // TODO lock for connection
           logger.info("Listening for connections.");
           try (Socket client = socket.accept()) {
             logger.info(() -> String.format("Accepted connection from %s", client.getRemoteSocketAddress()));
@@ -112,8 +112,8 @@ public class Server extends Connection {
           } catch (Exception e) {
             currentClient.set(null);
             // TODO log handling
-            logger.info("Client disconnected!");
-            logger.log(Level.FINE, "Client disconnection", e);
+            logger.info("ClientConnection disconnected!");
+            logger.log(Level.FINE, "ClientConnection disconnection", e);
           }
         }
       } catch (IOException e) {
