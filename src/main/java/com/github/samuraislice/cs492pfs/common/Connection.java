@@ -1,6 +1,7 @@
 package com.github.samuraislice.cs492pfs.common;
 
 import javax.crypto.Cipher;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -34,14 +35,15 @@ public abstract class Connection implements AutoCloseable {
 
   protected void handleConnection(@NotNull Socket socket)
       throws GeneralSecurityException, IOException {
-    socket.setSoTimeout((int) (PacketUtil.KEEPALIVE_INTERVAL * 2.5));
-    socket.setKeepAlive(true); // TODO is this enough?
+    // TODO enable timeout and do keepalives
+    //socket.setSoTimeout((int) (PacketUtil.KEEPALIVE_INTERVAL * 2.5 * 1000));
 
     DataInputStream inputStream = new DataInputStream(socket.getInputStream());
     DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
 
+    // Establish shared secret.
     byte[] sharedSecret = getSharedSecret(inputStream, outputStream);
-    logger.fine(String.format("Agreed on shared key %s (%d bits)", new BigInteger(sharedSecret).toString(16), sharedSecret.length * Byte.SIZE));
+    logger.info(String.format("Agreed on shared key %s (%d bits)", new BigInteger(sharedSecret).toString(16), sharedSecret.length * Byte.SIZE));
 
     // TODO PFS without other stuff is largely useless, no guards against MitM etc.
     //  Post-discussion:
@@ -50,16 +52,21 @@ public abstract class Connection implements AutoCloseable {
     //  - store pubkey in encrypted keystore
     //  - subsequent connects: mandate same keypair used (with override)
 
-    SecretKeySpec keySpec = new SecretKeySpec(sharedSecret, "AES");
-    // TODO investigate other paddings
-    Cipher encoder = Cipher.getInstance("AES/CBC/PKCS5Padding");
-    encoder.init(Cipher.ENCRYPT_MODE, keySpec);
+    // Use first 32 bytes of shared secret as key.
+    SecretKeySpec keySpec = new SecretKeySpec(sharedSecret, 0, 32, "AES");
 
-    Remote client = new Remote(outputStream, encoder);
+    // Set up encoder.
+    Cipher encoder = Cipher.getInstance("AES/CBC/PKCS5Padding");
+    // Use last <block size> bytes of shared secret as IV.
+    IvParameterSpec ivSpec = new IvParameterSpec(sharedSecret, sharedSecret.length - encoder.getBlockSize(), encoder.getBlockSize());
+    encoder.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
+
+    Remote client = new Remote(socket, outputStream, encoder);
     currentClient.set(client);
 
+    // Set up decoder.
     Cipher decoder = Cipher.getInstance("AES/CBC/PKCS5Padding");
-    decoder.init(Cipher.DECRYPT_MODE, keySpec);
+    decoder.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
 
     while (!socket.isClosed() && socket.isConnected() && !Thread.interrupted()) {
       byte[] data = PacketUtil.readPacket(inputStream, logger);
