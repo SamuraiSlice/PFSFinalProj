@@ -13,24 +13,27 @@ public class CommandManager {
   private final @NotNull String prefix;
 
   public CommandManager(@NotNull String prefix) {
-    this.registerCommands();
     this.prefix = prefix;
+    this.registerCommands();
   }
 
   public @NotNull String getCommandPrefix() {
     return prefix;
   }
 
-  public @Nullable Command getCommand(@NotNull String name) {
-    return commandMap.get(name);
+  public @Nullable Command getCommand(@NotNull String command) {
+    return commandMap.get(command);
   }
 
   private void registerCommands() {
-    // TODO
-    //  connect
-    //  disconnect
-    //  exit
-    //  trust
+    registerCommand(new CommandConnect());
+    registerCommand(new CommandDisconnect());
+    registerCommand(new CommandExit());
+    // TODO command to trust remote
+  }
+
+  private void registerCommand(@NotNull Command command) {
+    this.commandMap.put(this.prefix + command.getName(), command);
   }
 
 }
