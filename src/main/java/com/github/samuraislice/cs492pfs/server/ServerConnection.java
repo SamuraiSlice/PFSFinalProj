@@ -19,6 +19,7 @@ import java.util.function.BiConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.crypto.KeyAgreement;
+import javax.crypto.interfaces.DHPublicKey;
 import javax.crypto.spec.DHParameterSpec;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Range;
@@ -72,13 +73,13 @@ public class ServerConnection extends Connection {
     KeyFactory factory = KeyFactory.getInstance("DH");
     PublicKey clientKey = factory.generatePublic(keySpec);
 
-    if (!(clientKey.getParams() instanceof DHParameterSpec params)) {
+    if (!(clientKey instanceof DHPublicKey dhPubKey)) {
       throw new IOException("Invalid key parameters!");
     }
 
     // Initialize keypair using given prime and generator.
     KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
-    keyGen.initialize(params);
+    keyGen.initialize(dhPubKey.getParams());
     KeyPair keyPair = keyGen.generateKeyPair();
 
     // Send client the server public key.
@@ -112,8 +113,8 @@ public class ServerConnection extends Connection {
           } catch (Exception e) {
             currentClient.set(null);
             // TODO log handling
-            logger.info("ClientConnection disconnected!");
-            logger.log(Level.FINE, "ClientConnection disconnection", e);
+            logger.info("Client disconnected!");
+            logger.log(Level.FINE, "Client disconnection", e);
           }
         }
       } catch (IOException e) {
