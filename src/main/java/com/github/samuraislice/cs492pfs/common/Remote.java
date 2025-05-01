@@ -5,21 +5,34 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 
 public class Remote {
 
+  private final String identifier;
+  private final Socket socket;
   private final DataOutputStream stream;
   private final Cipher encoder;
 
-  public Remote(@NotNull DataOutputStream stream, @NotNull Cipher encoder) {
+  public Remote(@NotNull Socket socket, @NotNull DataOutputStream stream, @NotNull Cipher encoder) {
+    // TODO better identifier like keystore ID
+    this.identifier = socket.getInetAddress().toString();
+    this.socket = socket;
     this.stream = stream;
     this.encoder = encoder;
   }
 
+  public String getIdentifier() {
+    return identifier;
+  }
+
+  public void disconnect() throws IOException {
+    socket.close();
+  }
+
   public void sendMessage(@Nullable String message) throws GeneralSecurityException, IOException {
-    System.out.printf("DEBUG: sending message %s%n", message);
     if (message == null || message.isBlank()) {
       throw new IOException("No message provided!");
     }

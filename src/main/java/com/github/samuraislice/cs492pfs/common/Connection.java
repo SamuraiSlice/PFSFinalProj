@@ -88,7 +88,7 @@ public abstract class Connection implements AutoCloseable {
       @NotNull DataOutputStream outputStream
   ) throws GeneralSecurityException, IOException;
 
-  public @Nullable Remote getClient() {
+  public @Nullable Remote getRemote() {
     return this.currentClient.get();
   }
 

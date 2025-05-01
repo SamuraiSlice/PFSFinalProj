@@ -32,7 +32,11 @@ public class ClientConnection extends Connection {
     super(Logger.getLogger("PfsClient"), listener);
   }
 
-  public void setRemote(InetAddress address, @Range(from = 0, to = 65535) int port) {
+  public void setRemote(
+      @NotNull String name, // TODO send to server
+      @NotNull InetAddress address,
+      @Range(from = 0, to = 65535) int port
+  ) {
     this.address = address;
     this.port = port;
   }
@@ -90,8 +94,10 @@ public class ClientConnection extends Connection {
       try (Socket socket = new Socket(address, port)) {
         handleConnection(socket);
       } catch (GeneralSecurityException | IOException e) {
+        connectionThread.set(null);
         throw new RuntimeException(e);
       }
+      connectionThread.set(null);
     }
   }
 

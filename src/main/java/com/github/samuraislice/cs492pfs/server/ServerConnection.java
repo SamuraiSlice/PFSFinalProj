@@ -1,8 +1,8 @@
 package com.github.samuraislice.cs492pfs.server;
 
-import com.github.samuraislice.cs492pfs.common.Remote;
 import com.github.samuraislice.cs492pfs.common.Connection;
 import com.github.samuraislice.cs492pfs.common.PacketUtil;
+import com.github.samuraislice.cs492pfs.common.Remote;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -20,7 +20,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.crypto.KeyAgreement;
 import javax.crypto.interfaces.DHPublicKey;
-import javax.crypto.spec.DHParameterSpec;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Range;
 
@@ -35,6 +34,10 @@ public class ServerConnection extends Connection {
   ) {
     super(Logger.getLogger("PfsServer"), listener);
     this.port = port;
+  }
+
+  public boolean isAcceptingConnections() {
+    return this.acceptingConnections.get();
   }
 
   @Override
