@@ -5,6 +5,7 @@ import com.github.samuraislice.cs492pfs.common.Connection;
 import com.github.samuraislice.cs492pfs.common.PacketUtil;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -109,11 +110,15 @@ public class ClientConnection extends Connection {
     public void run() {
       try (Socket socket = new Socket(address, port)) {
         handleConnection(socket);
+        currentClient.set(null);
+      } catch (EOFException ignored) {
+        // Disconnection.
       } catch (GeneralSecurityException | IOException e) {
         connectionThread.set(null);
         throw new RuntimeException(e);
       }
       connectionThread.set(null);
+      close();
     }
   }
 

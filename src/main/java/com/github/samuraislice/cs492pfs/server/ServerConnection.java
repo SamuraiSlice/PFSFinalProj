@@ -70,8 +70,6 @@ public class ServerConnection extends Connection {
     // Recieve client data. This contains prime, generator, and public key information.
     byte[] data = PacketUtil.readPacket(inputStream, logger);
     X509EncodedKeySpec keySpec = new X509EncodedKeySpec(data);
-    // TODO might be "DiffieHellman" for init (though algorithm returns "DH")
-    // https://docs.oracle.com/en/java/javase/21/docs/specs/security/standard-names.html#keyfactory-algorithms
     KeyFactory factory = KeyFactory.getInstance("DH");
     PublicKey clientKey = factory.generatePublic(keySpec);
 
@@ -112,8 +110,8 @@ public class ServerConnection extends Connection {
           try (Socket client = socket.accept()) {
             logger.info(() -> String.format("Accepted connection from %s", client.getRemoteSocketAddress()));
             handleConnection(client);
-          } catch (Exception e) {
             currentClient.set(null);
+          } catch (Exception e) {
             // TODO log handling
             logger.info("Client disconnected!");
             logger.log(Level.FINE, "Client disconnection", e);
