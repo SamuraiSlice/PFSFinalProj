@@ -20,7 +20,7 @@ public class Client implements AutoCloseable {
 
   public Client(@Range(from = 0, to = 65535) int port) {
     BiConsumer<Remote, String> handler =
-        (client, message) -> System.out.printf("%s says: %s\n%n", client.getIdentifier(), message);
+        (client, message) -> System.out.printf("%s says: %s%n", client.getIdentifier(), message);
     this.server = new ServerConnection(port, handler);
     this.client = new ClientConnection(handler);
   }

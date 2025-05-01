@@ -17,7 +17,6 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.crypto.KeyAgreement;
 import javax.crypto.interfaces.DHPublicKey;
 import org.jetbrains.annotations.NotNull;
@@ -32,7 +31,7 @@ public class ServerConnection extends Connection {
       @Range(from = 0, to = 65535) int port,
       @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener
   ) {
-    super(Logger.getLogger("PfsServer"), listener);
+    super(listener);
     this.port = port;
   }
 

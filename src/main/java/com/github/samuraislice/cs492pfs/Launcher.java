@@ -8,8 +8,21 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import java.util.Date;
+import java.util.logging.Formatter;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
+import java.util.logging.StreamHandler;
 
 public class Launcher {
+
+  // Parent logger for other project loggers.
+  private static final Logger ROOT_LOGGER = Logger.getLogger(Launcher.class.getPackageName());
+
+  static {
+    // Configure root logger.
+    configureLogger();
+  }
 
   public static void main(String[] args) {
     // Set up cli options.
@@ -61,6 +74,34 @@ public class Launcher {
     System.out.println(message);
     new HelpFormatter().printHelp("java -jar cs492pfs.jar", options);
     System.exit(1);
+  }
+
+  private static void configureLogger() {
+    Launcher.ROOT_LOGGER.setUseParentHandlers(false);
+
+    Formatter formatter = new Formatter() {
+      @Override
+      public String format(LogRecord record) {
+        String loggerName = record.getLoggerName();
+        if (loggerName != null) {
+          int lastSeparator = loggerName.lastIndexOf('.');
+          if (lastSeparator >= 0) {
+            loggerName = loggerName.substring(lastSeparator + 1);
+          }
+        }
+        return String.format(
+            "[%1$tF %1$tT] [%2$s] [%3$s] %4$s%n",
+            new Date(record.getMillis()), record.getLevel(), loggerName, record.getMessage());
+      }
+    };
+
+    Launcher.ROOT_LOGGER.addHandler(new StreamHandler(System.out, formatter) {
+      @Override
+      public void publish(LogRecord record) {
+        super.publish(record);
+        flush();
+      }
+    });
   }
 
 }

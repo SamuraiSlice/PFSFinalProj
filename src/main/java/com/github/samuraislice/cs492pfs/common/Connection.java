@@ -19,15 +19,12 @@ import java.util.logging.Logger;
 
 public abstract class Connection implements AutoCloseable {
 
-  protected final Logger logger;
+  protected final Logger logger = Logger.getLogger(getClass().getName());
   protected final AtomicReference<Thread> connectionThread = new AtomicReference<>();
   protected final AtomicReference<Remote> currentClient = new AtomicReference<>();
   private final BiConsumer<@NotNull Remote, @NotNull String> listener;
 
-  protected Connection(
-      @NotNull Logger logger,
-      @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener) {
-    this.logger = logger;
+  protected Connection(@NotNull BiConsumer<@NotNull Remote, @NotNull String> listener) {
     this.listener = listener;
   }
 

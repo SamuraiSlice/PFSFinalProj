@@ -15,8 +15,9 @@ import java.security.KeyPairGenerator;
 import java.security.PublicKey;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.function.BiConsumer;
-import java.util.logging.Logger;
 import javax.crypto.KeyAgreement;
+import javax.crypto.interfaces.DHPublicKey;
+import javax.crypto.spec.DHParameterSpec;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Range;
@@ -26,10 +27,8 @@ public class ClientConnection extends Connection {
   private @Nullable InetAddress address;
   private int port;
 
-  public ClientConnection(
-      @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener
-  ) {
-    super(Logger.getLogger("PfsClient"), listener);
+  public ClientConnection(@NotNull BiConsumer<@NotNull Remote, @NotNull String> listener) {
+    super(listener);
   }
 
   public void setRemote(
@@ -66,19 +65,23 @@ public class ClientConnection extends Connection {
       @NotNull DataOutputStream outputStream
   ) throws GeneralSecurityException, IOException {
 
+    logger.fine("Generating keypair...");
     // Generate 2048-bit keypair.
     KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
     keyGen.initialize(2048);
     KeyPair keyPair = keyGen.generateKeyPair();
 
-    // Send server prime, generator, and public key.
-    PacketUtil.sendPacket(outputStream, keyPair.getPublic().getEncoded());
+    PublicKey clientKey = keyPair.getPublic();
+    logPubKey("Our key", clientKey);
 
-    // TODO establish logger (and do more logging)
-    byte[] serverKeyData = PacketUtil.readPacket(inputStream, Logger.getLogger("PfsClient"));
+    // Send server prime, generator, and public key.
+    PacketUtil.sendPacket(outputStream, clientKey.getEncoded());
+
+    byte[] serverKeyData = PacketUtil.readPacket(inputStream, logger);
     KeyFactory keyFactory = KeyFactory.getInstance("DH");
     X509EncodedKeySpec keySpec = new X509EncodedKeySpec(serverKeyData);
     PublicKey serverKey = keyFactory.generatePublic(keySpec);
+    logPubKey("Their key", serverKey);
 
     // Initialize key agreement.
     KeyAgreement agreement = KeyAgreement.getInstance("DH");
@@ -86,6 +89,19 @@ public class ClientConnection extends Connection {
     agreement.doPhase(serverKey, true);
 
     return agreement.generateSecret();
+  }
+
+  private void logPubKey(String identifier, PublicKey key) {
+    logger.fine(() -> {
+      if (!(key instanceof DHPublicKey dhPub)) {
+        return String.format("%s is a %s, not a DHPublicKey!", identifier, key.getClass().getName());
+      }
+      DHParameterSpec params = dhPub.getParams();
+      return String.format(
+          "%s: prime=%s, generator=%s, public=%s",
+          identifier, params.getP(), params.getG(), dhPub.getY()
+      );
+    });
   }
 
   private class ClientThread extends Thread {
