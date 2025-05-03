@@ -1,22 +1,21 @@
 package com.github.samuraislice.cs492pfs.common;
 
-import javax.crypto.Cipher;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.security.PublicKey;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.crypto.interfaces.DHPublicKey;
+import javax.crypto.spec.DHParameterSpec;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public abstract class Connection implements AutoCloseable {
 
@@ -50,32 +49,14 @@ public abstract class Connection implements AutoCloseable {
     //  - store pubkey in encrypted keystore
     //  - subsequent connects: mandate same keypair used (with override)
 
-    // Use first 32 bytes of shared secret as key.
-    SecretKeySpec keySpec = new SecretKeySpec(sharedSecret, 0, 32, "AES");
+    Remote remote = new Remote(socket, inputStream, outputStream, sharedSecret);
 
-    // Set up encoder.
-    Cipher encoder = Cipher.getInstance("AES/CBC/PKCS5Padding");
-    // Use last <block size> bytes of shared secret as IV.
-    IvParameterSpec ivSpec = new IvParameterSpec(sharedSecret, sharedSecret.length - encoder.getBlockSize(), encoder.getBlockSize());
-    encoder.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
 
-    Remote client = new Remote(socket, outputStream, encoder);
-    currentClient.set(client);
-
-    // Set up decoder.
-    Cipher decoder = Cipher.getInstance("AES/CBC/PKCS5Padding");
-    decoder.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
+    currentClient.set(remote);
 
     while (!socket.isClosed() && socket.isConnected() && !Thread.interrupted()) {
-      byte[] data = PacketUtil.readPacket(inputStream, logger);
-      if (data.length == 1 && data[0] == -1) {
-        listener.accept(client, "Disconnected.");
+      if (!remote.readMessage(logger, msg -> listener.accept(remote, msg))) {
         break;
-      }
-      data = decoder.doFinal(data);
-
-      if (data.length > 0) {
-        listener.accept(client, new String(data, StandardCharsets.UTF_8));
       }
     }
   }
@@ -124,6 +105,19 @@ public abstract class Connection implements AutoCloseable {
     if (thread.isAlive()) {
       logger.warning(() -> String.format("Thread failed to shut down after %d seconds!", shutdownTimeout));
     }
+  }
+
+  protected void logPubKey(String identifier, PublicKey key) {
+    logger.fine(() -> {
+      if (!(key instanceof DHPublicKey dhPub)) {
+        return String.format("%s is a %s, not a DHPublicKey!", identifier, key.getClass().getName());
+      }
+      DHParameterSpec params = dhPub.getParams();
+      return String.format(
+          "%s: prime=%s, generator=%s, public=%s",
+          identifier, params.getP(), params.getG(), dhPub.getY()
+      );
+    });
   }
 
 }

@@ -92,20 +92,14 @@ public class ClientConnection extends Connection {
     return agreement.generateSecret();
   }
 
-  private void logPubKey(String identifier, PublicKey key) {
-    logger.fine(() -> {
-      if (!(key instanceof DHPublicKey dhPub)) {
-        return String.format("%s is a %s, not a DHPublicKey!", identifier, key.getClass().getName());
-      }
-      DHParameterSpec params = dhPub.getParams();
-      return String.format(
-          "%s: prime=%s, generator=%s, public=%s",
-          identifier, params.getP(), params.getG(), dhPub.getY()
-      );
-    });
   }
 
   private class ClientThread extends Thread {
+
+    ClientThread() {
+      super("PfsClient");
+    }
+
     @Override
     public void run() {
       try (Socket socket = new Socket(address, port)) {

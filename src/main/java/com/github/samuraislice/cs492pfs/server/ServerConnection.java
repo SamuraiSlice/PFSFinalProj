@@ -64,12 +64,13 @@ public class ServerConnection extends Connection {
       @NotNull DataOutputStream outputStream
   ) throws GeneralSecurityException, IOException {
 
-    logger.fine("Awaiting DH parameters");
+    logger.fine("Awaiting DH parameters...");
     // Recieve client data. This contains prime, generator, and public key information.
     byte[] data = PacketUtil.readPacket(inputStream, logger);
     X509EncodedKeySpec keySpec = new X509EncodedKeySpec(data);
     KeyFactory factory = KeyFactory.getInstance("DH");
     PublicKey clientKey = factory.generatePublic(keySpec);
+    logPubKey("Their key", clientKey);
 
     if (!(clientKey instanceof DHPublicKey dhPubKey)) {
       throw new IOException("Invalid key parameters!");
@@ -79,16 +80,16 @@ public class ServerConnection extends Connection {
     KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
     keyGen.initialize(dhPubKey.getParams());
     KeyPair keyPair = keyGen.generateKeyPair();
+    PublicKey serverKey = keyPair.getPublic();
+    logPubKey("Our key", serverKey);
 
     // Send client the server public key.
-    logger.fine("Sending DH public key");
-    PacketUtil.sendPacket(outputStream, keyPair.getPublic().getEncoded());
+    PacketUtil.sendPacket(outputStream, serverKey.getEncoded());
 
     KeyAgreement agreement = KeyAgreement.getInstance("DH");
     agreement.init(keyPair.getPrivate());
     agreement.doPhase(clientKey, true);
 
-    logger.fine("Generating shared secret.");
     return agreement.generateSecret();
   }
 
@@ -109,6 +110,7 @@ public class ServerConnection extends Connection {
             handleConnection(client);
             currentClient.set(null);
           } catch (Exception e) {
+            currentClient.set(null);
             logger.info("Client disconnected!");
             logger.log(Level.FINE, "Client disconnection", e);
           }

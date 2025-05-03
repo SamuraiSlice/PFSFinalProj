@@ -4,7 +4,6 @@ import org.jetbrains.annotations.NotNull;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.logging.Logger;
 
 public enum PacketUtil {
@@ -19,11 +18,6 @@ public enum PacketUtil {
 
   public static void keepalive(@NotNull DataOutputStream outputStream) throws IOException {
     outputStream.writeInt(0);
-  }
-
-  public static void sendMessage(@NotNull DataOutputStream outputStream, @NotNull String message) throws IOException {
-    byte[] bytes = message.getBytes(StandardCharsets.UTF_8);
-    sendPacket(outputStream, bytes);
   }
 
   public static void sendPacket(
