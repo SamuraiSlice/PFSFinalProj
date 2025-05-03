@@ -102,6 +102,16 @@ public abstract class Connection implements AutoCloseable {
     // Interrupt thread.
     thread.interrupt();
 
+    Remote remote = currentClient.get();
+    if (remote != null) {
+      try {
+        remote.disconnect();
+      } catch (IOException e) {
+        logger.warning(() -> "Caught exception disconnecting remote: " + e.getMessage());
+        logger.log(Level.FINE, "Exception disconnecting remote", e);
+      }
+    }
+
     int shutdownTimeout = 10;
     try {
       // Wait for thread to actually die.

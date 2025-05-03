@@ -29,6 +29,7 @@ public class Remote {
   }
 
   public void disconnect() throws IOException {
+    PacketUtil.quit(stream);
     socket.close();
   }
 
