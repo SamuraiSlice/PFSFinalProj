@@ -28,7 +28,6 @@ public class CommandManager {
   private void registerCommands() {
     registerCommand(new CommandConnect());
     registerCommand(new CommandDisconnect());
-    registerCommand(new CommandExit());
     // TODO command to trust remote
   }
 

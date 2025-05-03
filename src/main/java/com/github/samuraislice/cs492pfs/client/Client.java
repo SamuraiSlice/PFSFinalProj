@@ -46,6 +46,12 @@ public class Client implements AutoCloseable {
 
     if (input.startsWith(manager.getCommandPrefix())) {
       String[] params = input.split(" ");
+
+      if ("/exit".equals(params[0])) {
+        LOGGER.info("Exiting.");
+        return false;
+      }
+
       Command command = manager.getCommand(params[0]);
       if (command != null) {
         String feedback = command.execute(server, client, params);
