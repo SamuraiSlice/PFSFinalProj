@@ -15,6 +15,7 @@ import java.security.GeneralSecurityException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public abstract class Connection implements AutoCloseable {
@@ -67,7 +68,6 @@ public abstract class Connection implements AutoCloseable {
 
     while (!socket.isClosed() && socket.isConnected() && !Thread.interrupted()) {
       byte[] data = PacketUtil.readPacket(inputStream, logger);
-      // TODO quit should be signed.
       if (data.length == 1 && data[0] == -1) {
         listener.accept(client, "Disconnected.");
         break;

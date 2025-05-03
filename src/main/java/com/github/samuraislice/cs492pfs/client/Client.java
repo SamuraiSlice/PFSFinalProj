@@ -10,8 +10,12 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.Scanner;
 import java.util.function.BiConsumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class Client implements AutoCloseable {
+
+  private static final Logger LOGGER = Logger.getLogger(new Object(){}.getClass().getEnclosingClass().getName());
 
   private final CommandManager manager = new CommandManager("/");
   private final Scanner scanner = new Scanner(System.in);
@@ -33,7 +37,6 @@ public class Client implements AutoCloseable {
     while (processLine(scanner.nextLine())) {
       // Yep.
     }
-
   }
 
   private boolean processLine(@NotNull String input) {
@@ -48,7 +51,7 @@ public class Client implements AutoCloseable {
         String feedback = command.execute(server, client, params);
         System.out.println(feedback);
       } else {
-        System.out.printf("Invalid command \"%s\"%n", params[0]);
+        LOGGER.warning(() -> String.format("Invalid command \"%s\"%n", params[0]));
       }
       return true;
     }
@@ -58,16 +61,15 @@ public class Client implements AutoCloseable {
       remote = client.getRemote();
     }
     if (remote == null) {
-      System.out.println("Not connected. Try /connect <identifier> <hostname> <port>");
+      LOGGER.warning("Not connected. Try /connect <identifier> <hostname> <port>");
       return true;
     }
 
     try {
       remote.sendMessage(input);
     } catch (GeneralSecurityException | IOException e) {
-      // TODO better logging
-      System.out.println("An exception occurred while sending the message.");
-      e.printStackTrace();
+      LOGGER.warning("An exception occurred while sending the message: " + e.getMessage());
+      LOGGER.log(Level.FINE, "Message sending exception", e);
     }
     return true;
   }

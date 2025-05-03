@@ -10,16 +10,13 @@ import java.util.logging.Logger;
 public enum PacketUtil {
   ;
 
-  // TODO might not be necessary
   public static final int KEEPALIVE_INTERVAL = 10;
 
-  // TODO this should be signed
   public static void quit(@NotNull DataOutputStream outputStream) throws IOException {
     outputStream.writeInt(1);
     outputStream.write(-1);
   }
 
-  // TODO might not be necessary
   public static void keepalive(@NotNull DataOutputStream outputStream) throws IOException {
     outputStream.writeInt(0);
   }

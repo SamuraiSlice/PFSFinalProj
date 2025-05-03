@@ -58,8 +58,6 @@ public class ServerConnection extends Connection {
     super.close();
   }
 
-  // TODO extract to common class
-
   @Override
   protected byte[] getSharedSecret(
       @NotNull DataInputStream inputStream,
@@ -94,7 +92,6 @@ public class ServerConnection extends Connection {
     return agreement.generateSecret();
   }
 
-  // TODO maybe extract to separate class
   private class ServerThread extends Thread {
 
     ServerThread() {
@@ -112,7 +109,6 @@ public class ServerConnection extends Connection {
             handleConnection(client);
             currentClient.set(null);
           } catch (Exception e) {
-            // TODO log handling
             logger.info("Client disconnected!");
             logger.log(Level.FINE, "Client disconnection", e);
           }
