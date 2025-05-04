@@ -6,8 +6,11 @@ import com.github.samuraislice.cs492pfs.common.Remote;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.channels.ClosedByInterruptException;
+import java.nio.channels.ServerSocketChannel;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
@@ -102,23 +105,28 @@ public class ServerConnection extends Connection {
     @Override
     public void run() {
       logger.info(() -> String.format("Starting server on port %d...", port));
-      try (ServerSocket socket = new ServerSocket(port)) {
-        while (acceptingConnections.get() && !interrupted()) { // TODO lock for connection
+      try (ServerSocketChannel channel = ServerSocketChannel.open().bind(new InetSocketAddress(port));
+          ServerSocket socket = channel.socket()) {
+        while (acceptingConnections.get() && !interrupted()) {
           logger.info("Listening for connections.");
           try (Socket client = socket.accept()) {
-            logger.info(() -> String.format("Accepted connection from %s", client.getRemoteSocketAddress()));
+            logger.info(() -> String.format("Accepted connection from %s",
+                client.getRemoteSocketAddress()));
             handleConnection(client);
-            currentClient.set(null);
+          } catch (ClosedByInterruptException e) {
+            // Thread interrupted. Shutting down.
+            logger.info("Stopped waiting for connections.");
           } catch (Exception e) {
             currentClient.set(null);
-            logger.info("Client disconnected!");
+            logger.info(() -> "Client disconnected: " + e.getMessage());
             logger.log(Level.FINE, "Client disconnection", e);
           }
         }
       } catch (IOException e) {
-        connectionThread.set(null);
-        throw new RuntimeException(e);
+        logger.info(() -> "Server closed: " + e.getMessage());
+        logger.log(Level.FINE, "Server closure", e);
       }
+      currentClient.set(null);
       connectionThread.set(null);
     }
 
