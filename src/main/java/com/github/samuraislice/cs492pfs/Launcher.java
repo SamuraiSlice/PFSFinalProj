@@ -10,6 +10,7 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import java.util.Date;
 import java.util.logging.Formatter;
+import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.logging.StreamHandler;
@@ -77,7 +78,7 @@ public class Launcher {
   }
 
   private static void configureLogger() {
-    Launcher.ROOT_LOGGER.setUseParentHandlers(false);
+    ROOT_LOGGER.setUseParentHandlers(false);
 
     Formatter formatter = new Formatter() {
       @Override
@@ -95,13 +96,15 @@ public class Launcher {
       }
     };
 
-    Launcher.ROOT_LOGGER.addHandler(new StreamHandler(System.out, formatter) {
+    ROOT_LOGGER.addHandler(new StreamHandler(System.out, formatter) {
       @Override
       public void publish(LogRecord record) {
         super.publish(record);
         flush();
       }
     });
+
+    ROOT_LOGGER.setLevel(Level.FINE);
   }
 
 }

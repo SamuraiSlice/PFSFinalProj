@@ -24,7 +24,8 @@ public class Remote {
   private final DataOutputStream outputStream;
   private final SecretKeySpec keySpec;
   private final SecureRandom random;
-  private String identifier;
+  private final @NotNull String hostname;
+  private @Nullable Identity identity; // TODO should be atomic
 
   Remote(
       @NotNull Socket socket,
@@ -38,13 +39,18 @@ public class Remote {
     // Use first 32 bytes of shared secret as key.
     keySpec = new SecretKeySpec(sharedSecret, 0, 32, "AES");
     random = new SecureRandom(sharedSecret);
+    hostname = socket.getInetAddress().toString();
+  }
 
-    // TODO set up identifier during handshake
-    identifier = socket.getInetAddress().toString();
+  void setIdentity(@NotNull Identity identity) {
+    this.identity = identity;
   }
 
   public String getIdentifier() {
-    return identifier;
+    if (identity != null) {
+      return identity.getIdentity();
+    }
+    return hostname;
   }
 
   public void disconnect() throws IOException {
@@ -57,19 +63,29 @@ public class Remote {
       throw new IOException("No message provided!");
     }
 
-    Cipher encoder = Cipher.getInstance("AES/CBC/PKCS5Padding");
+    byte[] data = message.getBytes(StandardCharsets.UTF_8);
+    data = encode(data, 0, data.length);
+
+    // TODO add hmac
+
+    sendRawData(data);
+  }
+
+  public byte @NotNull [] encode(byte @NotNull [] data, int offset, int length)
+      throws GeneralSecurityException {
+    Cipher encoder = Cipher.getInstance(CryptoConstants.CIPHER_MODE);
     encoder.init(Cipher.ENCRYPT_MODE, keySpec, random);
     byte[] iv = encoder.getIV();
 
     // Encode message.
-    byte[] encoded = encoder.doFinal(message.getBytes(StandardCharsets.UTF_8));
+    byte[] encoded = encoder.doFinal(data, offset, length);
 
-    // Combine all the data.
+    // Combine IV and message data.
     byte[] combined = new byte[iv.length + encoded.length];
     System.arraycopy(iv, 0, combined, 0, iv.length);
     System.arraycopy(encoded, 0, combined, iv.length, encoded.length);
 
-    sendRawData(combined);
+    return combined;
   }
 
   public void sendRawData(byte @NotNull [] data) throws IOException {
@@ -92,25 +108,38 @@ public class Remote {
       return true;
     }
 
-    Cipher decoder = Cipher.getInstance("AES/CBC/PKCS5Padding");
-    byte[] iv = new byte[decoder.getBlockSize()];
-    if (iv.length >= rawData.length) {
-      throw new GeneralSecurityException("Unable to read IV!");
-    }
+    // TODO verify hmac
 
-    System.arraycopy(rawData, 0, iv, 0, iv.length);
-    IvParameterSpec ivSpec = new IvParameterSpec(iv);
-    decoder.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
-
-    byte[] messageData = new byte[rawData.length - iv.length];
-    System.arraycopy(rawData, iv.length, messageData, 0, messageData.length);
-    messageData = decoder.doFinal(messageData);
+    byte[] messageData = decode(rawData, 0, rawData.length);
 
     consumer.accept(new String(messageData, StandardCharsets.UTF_8));
     return true;
   }
 
-  public byte[] readRawData(@NotNull Logger logger) throws IOException {
+  public byte @NotNull [] decode(byte @NotNull [] rawData, int offset, int length)
+      throws GeneralSecurityException {
+    if (offset + length > rawData.length) {
+      throw new DecodingException(rawData.length, offset + length);
+    } else if (offset < 0) {
+      throw new DecodingException(rawData.length, offset);
+    }
+
+    // Create decoder instance.
+    Cipher decoder = Cipher.getInstance(CryptoConstants.CIPHER_MODE);
+    int blockSize = decoder.getBlockSize();
+    if (blockSize >= rawData.length - offset) {
+      throw new DecodingException(rawData.length, offset + blockSize);
+    }
+
+    // Read IV and initialize decoder.
+    IvParameterSpec ivSpec = new IvParameterSpec(rawData, offset, blockSize);
+    decoder.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
+
+    // Finalize data.
+    return decoder.doFinal(rawData, offset + blockSize, length - blockSize);
+  }
+
+  public byte @NotNull [] readRawData(@NotNull Logger logger) throws IOException {
     synchronized (inputLock) {
       return PacketUtil.readPacket(inputStream, logger);
     }

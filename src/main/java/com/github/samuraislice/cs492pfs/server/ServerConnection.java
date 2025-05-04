@@ -1,6 +1,7 @@
 package com.github.samuraislice.cs492pfs.server;
 
 import com.github.samuraislice.cs492pfs.common.Connection;
+import com.github.samuraislice.cs492pfs.common.CryptoConstants;
 import com.github.samuraislice.cs492pfs.common.PacketUtil;
 import com.github.samuraislice.cs492pfs.common.Remote;
 import java.io.DataInputStream;
@@ -31,10 +32,11 @@ public class ServerConnection extends Connection {
   protected final AtomicBoolean acceptingConnections = new AtomicBoolean();
 
   public ServerConnection(
-      @Range(from = 0, to = 65535) int port,
-      @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener
+      @NotNull String identity,
+      @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener,
+      @Range(from = 0, to = 65535) int port
   ) {
-    super(listener);
+    super(identity, listener);
     this.port = port;
   }
 
@@ -67,11 +69,11 @@ public class ServerConnection extends Connection {
       @NotNull DataOutputStream outputStream
   ) throws GeneralSecurityException, IOException {
 
-    logger.fine("Awaiting DH parameters...");
+    logger.fine("Awaiting parameters...");
     // Recieve client data. This contains prime, generator, and public key information.
     byte[] data = PacketUtil.readPacket(inputStream, logger);
     X509EncodedKeySpec keySpec = new X509EncodedKeySpec(data);
-    KeyFactory factory = KeyFactory.getInstance("DH");
+    KeyFactory factory = KeyFactory.getInstance(CryptoConstants.SHARED_KEY_AGREEMENT);
     PublicKey clientKey = factory.generatePublic(keySpec);
     logPubKey("Their key", clientKey);
 
@@ -80,7 +82,7 @@ public class ServerConnection extends Connection {
     }
 
     // Initialize keypair using given prime and generator.
-    KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
+    KeyPairGenerator keyGen = KeyPairGenerator.getInstance(CryptoConstants.SHARED_KEY_AGREEMENT);
     keyGen.initialize(dhPubKey.getParams());
     KeyPair keyPair = keyGen.generateKeyPair();
     PublicKey serverKey = keyPair.getPublic();
@@ -89,7 +91,7 @@ public class ServerConnection extends Connection {
     // Send client the server public key.
     PacketUtil.sendPacket(outputStream, serverKey.getEncoded());
 
-    KeyAgreement agreement = KeyAgreement.getInstance("DH");
+    KeyAgreement agreement = KeyAgreement.getInstance(CryptoConstants.SHARED_KEY_AGREEMENT);
     agreement.init(keyPair.getPrivate());
     agreement.doPhase(clientKey, true);
 

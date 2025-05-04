@@ -22,10 +22,16 @@ public abstract class Connection implements AutoCloseable {
   protected final Logger logger = Logger.getLogger(getClass().getName());
   protected final AtomicReference<Thread> connectionThread = new AtomicReference<>();
   protected final AtomicReference<Remote> currentClient = new AtomicReference<>();
+  private final String identity;
   private final BiConsumer<@NotNull Remote, @NotNull String> listener;
 
-  protected Connection(@NotNull BiConsumer<@NotNull Remote, @NotNull String> listener) {
+  protected Connection(@NotNull String identity, @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener) {
+    this.identity = identity;
     this.listener = listener;
+  }
+
+  public @NotNull String getIdentity() {
+    return this.identity;
   }
 
   public abstract void open();
@@ -42,15 +48,16 @@ public abstract class Connection implements AutoCloseable {
     byte[] sharedSecret = getSharedSecret(inputStream, outputStream);
     logger.info(String.format("Agreed on shared key %s (%d bits)", new BigInteger(sharedSecret).toString(16), sharedSecret.length * Byte.SIZE));
 
-    // TODO PFS without other stuff is largely useless, no guards against MitM etc.
-    //  Post-discussion:
-    //  - add some form of public key encryption
-    //  - first connect: trust keypair
-    //  - store pubkey in encrypted keystore
-    //  - subsequent connects: mandate same keypair used (with override)
-
     Remote remote = new Remote(socket, inputStream, outputStream, sharedSecret);
 
+    // Send our identity.
+    SecureStorage.INSTANCE.encodeIdentity(getIdentity(), remote);
+
+    // Await their identity.
+    // Note that unlike getting shared secret, no handshaking is required.
+    // Identity can be sent first and received second on both ends.
+    Identity remoteIdentity = SecureStorage.INSTANCE.decodeIdentity(remote, logger);
+    remote.setIdentity(remoteIdentity);
 
     currentClient.set(remote);
 

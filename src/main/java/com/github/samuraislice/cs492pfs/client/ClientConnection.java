@@ -1,6 +1,7 @@
 package com.github.samuraislice.cs492pfs.client;
 
 import com.github.samuraislice.cs492pfs.common.Connection;
+import com.github.samuraislice.cs492pfs.common.CryptoConstants;
 import com.github.samuraislice.cs492pfs.common.PacketUtil;
 import com.github.samuraislice.cs492pfs.common.Remote;
 import java.io.DataInputStream;
@@ -17,6 +18,7 @@ import java.security.KeyPairGenerator;
 import java.security.PublicKey;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.function.BiConsumer;
+import java.util.logging.Level;
 import javax.crypto.KeyAgreement;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -27,12 +29,14 @@ public class ClientConnection extends Connection {
   private @Nullable InetAddress address;
   private int port;
 
-  public ClientConnection(@NotNull BiConsumer<@NotNull Remote, @NotNull String> listener) {
-    super(listener);
+  public ClientConnection(
+      @NotNull String identity,
+      @NotNull BiConsumer<@NotNull Remote, @NotNull String> listener
+  ) {
+    super(identity, listener);
   }
 
   public void setRemote(
-      @NotNull String name, // TODO send to server
       @NotNull InetAddress address,
       @Range(from = 0, to = 65535) int port
   ) {
@@ -66,9 +70,9 @@ public class ClientConnection extends Connection {
   ) throws GeneralSecurityException, IOException {
 
     logger.fine("Generating keypair...");
-    // Generate 2048-bit keypair.
-    KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
-    keyGen.initialize(2048);
+    // Generate keypair.
+    KeyPairGenerator keyGen = KeyPairGenerator.getInstance(CryptoConstants.SHARED_KEY_AGREEMENT);
+    keyGen.initialize(CryptoConstants.SHARED_PUB_BITS);
     KeyPair keyPair = keyGen.generateKeyPair();
 
     PublicKey clientKey = keyPair.getPublic();
@@ -78,19 +82,17 @@ public class ClientConnection extends Connection {
     PacketUtil.sendPacket(outputStream, clientKey.getEncoded());
 
     byte[] serverKeyData = PacketUtil.readPacket(inputStream, logger);
-    KeyFactory keyFactory = KeyFactory.getInstance("DH");
+    KeyFactory keyFactory = KeyFactory.getInstance(CryptoConstants.SHARED_KEY_AGREEMENT);
     X509EncodedKeySpec keySpec = new X509EncodedKeySpec(serverKeyData);
     PublicKey serverKey = keyFactory.generatePublic(keySpec);
     logPubKey("Their key", serverKey);
 
     // Initialize key agreement.
-    KeyAgreement agreement = KeyAgreement.getInstance("DH");
+    KeyAgreement agreement = KeyAgreement.getInstance(CryptoConstants.SHARED_KEY_AGREEMENT);
     agreement.init(keyPair.getPrivate());
     agreement.doPhase(serverKey, true);
 
     return agreement.generateSecret();
-  }
-
   }
 
   private class ClientThread extends Thread {
@@ -130,7 +132,7 @@ public class ClientConnection extends Connection {
     }
 
     private void logConnectionFailure(Exception e) {
-      logger.info(() -> "Connection failed: " + e.getMessage());
+      logger.info(() -> "Connection lost: " + e.getMessage());
       logger.log(Level.FINE, "Connection failure", e);
     }
   }

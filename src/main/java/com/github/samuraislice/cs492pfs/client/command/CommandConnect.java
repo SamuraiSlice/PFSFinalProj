@@ -15,8 +15,8 @@ public class CommandConnect extends Command {
       @NotNull ClientConnection client,
       String @NotNull ... args
   ) {
-    if (args.length < 4) {
-      return "Usage: /connect <identifier> <host> <port>";
+    if (args.length < 3) {
+      return "Usage: /connect <host> <port>";
     }
 
     // Handle existing server connection.
@@ -41,24 +41,24 @@ public class CommandConnect extends Command {
     // Convert hostname to address.
     InetAddress address;
     try {
-      address = InetAddress.getByName(args[2]);
+      address = InetAddress.getByName(args[1]);
     } catch (UnknownHostException e) {
       // TODO log error
-      return "Unknown host " + args[2];
+      return "Unknown host " + args[1];
     }
 
     // Parse port.
     int port;
     try {
-      port = Integer.parseInt(args[3]);
+      port = Integer.parseInt(args[2]);
     } catch (NumberFormatException e) {
-      return "Invalid port number " + args[3];
+      return "Invalid port number " + args[2];
     }
     if (port < 0 || port > 65535) {
       return "Invalid port (range 0-65535)";
     }
 
-    client.setRemote(args[1], address, port);
+    client.setRemote(address, port);
     client.open();
 
     return "Initiating connection...";
