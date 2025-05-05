@@ -6,6 +6,7 @@ import com.github.samuraislice.cs492pfs.common.SecureStorage;
 import com.github.samuraislice.cs492pfs.server.ServerConnection;
 import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
+import java.security.GeneralSecurityException;
 
 public class CommandTrust extends Command {
 
@@ -31,7 +32,7 @@ public class CommandTrust extends Command {
       } else {
         return remote.getIdentifier() + " is already trusted!";
       }
-    } catch (IOException e) {
+    } catch (GeneralSecurityException | IOException e) {
       return "Failed to trust " + remote.getIdentifier() + ": " + e.getMessage();
     }
   }

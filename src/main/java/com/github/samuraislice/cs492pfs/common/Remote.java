@@ -38,7 +38,7 @@ public class Remote {
     this.inputStream = inputStream;
     this.outputStream = outputStream;
     // Use first 32 bytes of shared secret as key.
-    keySpec = new SecretKeySpec(sharedSecret, 0, 32, "AES");
+    keySpec = new SecretKeySpec(sharedSecret, 0, 32, CryptoConstants.SECRET_KEY_SPEC);
     random = new SecureRandom(sharedSecret);
     hostname = socket.getInetAddress().toString();
   }
