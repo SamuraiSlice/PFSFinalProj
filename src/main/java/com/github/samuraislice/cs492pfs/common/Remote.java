@@ -7,6 +7,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 import javax.crypto.Cipher;
@@ -19,13 +20,13 @@ public class Remote {
 
   private final Object outputLock = new Object();
   private final Object inputLock = new Object();
+  private  final AtomicReference<@Nullable Identity> identity = new AtomicReference<>();
   private final Socket socket;
   private final DataInputStream inputStream;
   private final DataOutputStream outputStream;
   private final SecretKeySpec keySpec;
   private final SecureRandom random;
   private final @NotNull String hostname;
-  private @Nullable Identity identity; // TODO should be atomic
 
   Remote(
       @NotNull Socket socket,
@@ -43,12 +44,17 @@ public class Remote {
   }
 
   void setIdentity(@NotNull Identity identity) {
-    this.identity = identity;
+    this.identity.set(identity);
+  }
+
+  @Nullable Identity getIdentity() {
+    return this.identity.get();
   }
 
   public String getIdentifier() {
-    if (identity != null) {
-      return identity.getIdentity();
+    Identity ident = identity.get();
+    if (ident != null) {
+      return ident.getIdentity();
     }
     return hostname;
   }
@@ -66,9 +72,9 @@ public class Remote {
     byte[] data = message.getBytes(StandardCharsets.UTF_8);
     data = encode(data, 0, data.length);
 
-    // TODO add hmac
-
     sendRawData(data);
+
+    // TODO could add hmac for non-repudiation
   }
 
   public byte @NotNull [] encode(byte @NotNull [] data, int offset, int length)
@@ -108,7 +114,7 @@ public class Remote {
       return true;
     }
 
-    // TODO verify hmac
+    // TODO could verify hmac for non-repudiation
 
     byte[] messageData = decode(rawData, 0, rawData.length);
 

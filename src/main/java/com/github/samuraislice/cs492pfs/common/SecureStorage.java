@@ -32,6 +32,36 @@ public enum SecureStorage {
       HashMultimap.create()
   );
   private KeyPair keyPair;
+  // TODO encrypt/decrypt constant
+
+  public boolean exists() {
+    return initialized.get() || Files.exists(DATASTORE);
+  }
+
+  public boolean init(@NotNull String password) throws GeneralSecurityException, IOException {
+    // Only allow one initialization attempt to occur at a time.
+    // Can reuse object as a lock because it isn't exposed.
+    synchronized (initialized) {
+      if (initialized.get()) {
+        throw new IllegalStateException("Already initialized!");
+      }
+
+
+
+      if (exists()) {
+        load();
+        return initialized.compareAndSet(false, true);
+      }
+
+      KeyPairGenerator keyGen = KeyPairGenerator.getInstance(CryptoConstants.SIG_SPEC);
+      keyGen.initialize(CryptoConstants.SIG_SPEC_BITS, random);
+      keyPair = keyGen.generateKeyPair();
+
+      save();
+
+      return initialized.compareAndSet(false, true);
+    }
+  }
 
   // TODO
   //  Needs support for concurrent access
@@ -42,39 +72,13 @@ public enum SecureStorage {
   //  decrypt keypair
   //  validate & load ident + pubkey
 
-  public boolean exists() {
-    return initialized.get() || Files.exists(DATASTORE);
+  private void load() throws IOException {
+    // TODO
   }
 
-  public boolean init(@NotNull String password) throws GeneralSecurityException {
-    // Only allow one initialization attempt to occur at a time.
-    // Can reuse object as a lock because it isn't exposed.
-    synchronized (initialized) {
-      if (initialized.get()) {
-        throw new IllegalStateException("Already initialized!");
-      }
-
-      if (exists()) {
-        // TODO load
-        return initialized.compareAndSet(false, true);
-      }
-
-      KeyPairGenerator keyGen = KeyPairGenerator.getInstance(CryptoConstants.SIG_SPEC);
-      keyGen.initialize(CryptoConstants.SIG_SPEC_BITS, random);
-      keyPair = keyGen.generateKeyPair();
-      // TODO save
-      return initialized.compareAndSet(false, true);
-    }
-  }
-
-  public @NotNull PublicKey getPublicKey() {
-    checkState();
-    return keyPair.getPublic();
-  }
-
-  public @NotNull Identity getLocalIdentity(@NotNull String identifier) {
-    checkState();
-    return new Identity(identifier, keyPair.getPublic(), true);
+  private void save() throws IOException {
+    // This should only be called from the user input thread, so it shouldn't need extra syncing.
+    // TODO
   }
 
   public byte @NotNull [] sign(byte @NotNull [] data) throws GeneralSecurityException {
@@ -138,19 +142,20 @@ public enum SecureStorage {
     return new Identity(identifier, clientKey, trusted);
   }
 
-  public boolean trust(@NotNull Remote remote) {
+  public boolean trust(@NotNull Remote remote) throws IOException {
     checkState();
 
-//    if (remote.verified()) {
-//      // If identity is already verified, nothing to do.
-//      return true;
-//    }
-//
-//    trustedIdentities.put(identity.identifier(), identity.key());
+    Identity identity = remote.getIdentity();
+    if (identity == null || identity.verified()) {
+      // If identity is already verified, nothing to do.
+      return false;
+    }
 
+    trustedIdentities.put(identity.identifier(), identity.key());
+    remote.setIdentity(new Identity(identity.identifier(), identity.key(), true));
 
-    // TODO
-    return false;
+    save();
+    return true;
   }
 
   private void checkState() {

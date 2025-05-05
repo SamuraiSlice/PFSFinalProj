@@ -62,7 +62,7 @@ public class Client implements AutoCloseable {
       while (!SecureStorage.INSTANCE.init(scanner.nextLine())) {
         System.out.print("Invalid password. Please enter password: ");
       }
-    } catch (GeneralSecurityException e) {
+    } catch (GeneralSecurityException | IOException e) {
       LOGGER.severe("Unable to initialize secure storage!");
       LOGGER.log(Level.SEVERE, "Error initializing secure storage", e);
       return false;

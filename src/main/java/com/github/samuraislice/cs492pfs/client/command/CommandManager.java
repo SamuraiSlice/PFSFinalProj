@@ -28,7 +28,7 @@ public class CommandManager {
   private void registerCommands() {
     registerCommand(new CommandConnect());
     registerCommand(new CommandDisconnect());
-    // TODO command to trust remote
+    registerCommand(new CommandTrust());
   }
 
   private void registerCommand(@NotNull Command command) {
