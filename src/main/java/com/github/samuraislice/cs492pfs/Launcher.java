@@ -8,6 +8,9 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.logging.Formatter;
 import java.util.logging.Level;
@@ -90,9 +93,18 @@ public class Launcher {
             loggerName = loggerName.substring(lastSeparator + 1);
           }
         }
+        String message = record.getMessage();
+        Throwable thrown = record.getThrown();
+        if (thrown != null) {
+          ByteArrayOutputStream output = new ByteArrayOutputStream();
+          try (PrintStream stream = new PrintStream(output, true, StandardCharsets.UTF_8)) {
+            thrown.printStackTrace(stream);
+          }
+          message += '\n' + output.toString(StandardCharsets.UTF_8);
+        }
         return String.format(
             "[%1$tF %1$tT] [%2$s] [%3$s] %4$s%n",
-            new Date(record.getMillis()), record.getLevel(), loggerName, record.getMessage());
+            new Date(record.getMillis()), record.getLevel(), loggerName, message);
       }
     };
 
@@ -103,8 +115,6 @@ public class Launcher {
         flush();
       }
     });
-
-    ROOT_LOGGER.setLevel(Level.FINE);
   }
 
 }
