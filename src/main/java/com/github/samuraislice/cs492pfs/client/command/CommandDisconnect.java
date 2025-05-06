@@ -9,7 +9,7 @@ import java.io.IOException;
 public class CommandDisconnect extends Command {
 
   @Override
-  public String execute(
+  public @NotNull String execute(
       @NotNull ServerConnection server,
       @NotNull ClientConnection client,
       String @NotNull ... args
@@ -20,6 +20,7 @@ public class CommandDisconnect extends Command {
     }
 
     if (remote == null) {
+      server.open();
       return "Not connected!";
     }
 

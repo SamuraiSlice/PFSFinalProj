@@ -24,6 +24,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Range;
 
+/**
+ * A {@link Connection} establishing contact with a remote server.
+ */
 public class ClientConnection extends Connection {
 
   private @Nullable InetAddress address;
@@ -36,6 +39,12 @@ public class ClientConnection extends Connection {
     super(identity, listener);
   }
 
+  /**
+   * Set the remote server data.
+   *
+   * @param address the host address
+   * @param port the port
+   */
   public void setRemote(
       @NotNull InetAddress address,
       @Range(from = 0, to = 65535) int port

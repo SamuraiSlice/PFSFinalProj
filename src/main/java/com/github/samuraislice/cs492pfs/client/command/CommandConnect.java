@@ -10,7 +10,7 @@ import java.net.UnknownHostException;
 public class CommandConnect extends Command {
 
   @Override
-  public String execute(
+  public @NotNull String execute(
       @NotNull ServerConnection server,
       @NotNull ClientConnection client,
       String @NotNull ... args

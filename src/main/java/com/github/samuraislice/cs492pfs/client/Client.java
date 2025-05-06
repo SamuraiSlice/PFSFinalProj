@@ -14,6 +14,9 @@ import java.util.logging.Logger;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Range;
 
+/**
+ * Main client hosting connections to and from external servers.
+ */
 public class Client implements AutoCloseable {
 
   private static final Logger LOGGER = Logger.getLogger(new Object(){}.getClass().getEnclosingClass().getName());
@@ -28,6 +31,9 @@ public class Client implements AutoCloseable {
     this.port = port;
   }
 
+  /**
+   * Open the client. Starts login procedure and handles user interaction.
+   */
   public void open() {
     scanner = new Scanner(System.in);
 
@@ -49,6 +55,11 @@ public class Client implements AutoCloseable {
     }
   }
 
+  /**
+   * Initialize the secure storage.
+   *
+   * @return true if the secure storage was initialized correctly.
+   */
   private boolean initSecureStorage() {
     if (SecureStorage.INSTANCE.exists()) {
       System.out.print("Please enter password: ");
@@ -59,7 +70,9 @@ public class Client implements AutoCloseable {
       System.out.print("Password: ");
     }
     try {
-      while (!SecureStorage.INSTANCE.init(System.console().readPassword())) {
+      // TODO to hide password, have to convert all usages to use Console.
+      //  Even then, gets messy on Windows.
+      while (!SecureStorage.INSTANCE.init(scanner.nextLine().toCharArray())) {
         System.out.print("Invalid password. Please enter password: ");
       }
     } catch (GeneralSecurityException | IOException e) {
@@ -70,6 +83,11 @@ public class Client implements AutoCloseable {
     return true;
   }
 
+  /**
+   * Intake a username.
+   *
+   * @return the username
+   */
   private @NotNull String intakeUsername() {
     String name;
 
@@ -84,21 +102,31 @@ public class Client implements AutoCloseable {
     return name;
   }
 
+  /**
+   * Main client loop. Processes a line of user input.
+   *
+   * @param input the user input
+   * @return true if the client should not close as a result of the input
+   */
   private boolean processLine(@NotNull String input) {
     if (input.isBlank()) {
       return true;
     }
 
+    // If the input is a command, handle it.
     if (input.startsWith(manager.getCommandPrefix())) {
       String[] params = input.split(" ");
 
+      // Hardcoded exit command (so that it can't be overridden by accident).
       if ("/exit".equals(params[0])) {
         LOGGER.info("Exiting.");
         return false;
       }
 
+      // Get executed command.
       Command command = manager.getCommand(params[0]);
       if (command != null) {
+        // Perform command and send feedback.
         String feedback = command.execute(server, client, params);
         System.out.println(feedback);
       } else {
@@ -107,15 +135,18 @@ public class Client implements AutoCloseable {
       return true;
     }
 
+    // Otherwise, send chats to connected remotes.
     Remote remote = server.getRemote();
     if (remote == null) {
       remote = client.getRemote();
     }
+    // Warn about no remote.
     if (remote == null) {
       LOGGER.warning("Not connected. Try /connect <identifier> <hostname> <port>");
       return true;
     }
 
+    // Send message.
     try {
       remote.sendMessage(input);
     } catch (GeneralSecurityException | IOException e) {
@@ -128,8 +159,12 @@ public class Client implements AutoCloseable {
   @Override
   public void close() {
     server.close();
-    client.close();
-    scanner.close();
+    if (client != null) {
+      client.close();
+    }
+    if (server != null) {
+      scanner.close();
+    }
   }
 
 }

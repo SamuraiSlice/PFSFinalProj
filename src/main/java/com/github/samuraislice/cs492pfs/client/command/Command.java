@@ -5,6 +5,9 @@ import com.github.samuraislice.cs492pfs.server.ServerConnection;
 import org.jetbrains.annotations.NotNull;
 import java.util.Locale;
 
+/**
+ * Class defining behavior for a client command.
+ */
 public abstract class Command {
 
   private final String name;
@@ -13,11 +16,23 @@ public abstract class Command {
     this.name = getClass().getSimpleName().toLowerCase(Locale.ROOT).replace("command", "");
   }
 
-  public String getName() {
+  /**
+   *
+   * @return
+   */
+  public @NotNull String getName() {
     return this.name;
   }
 
-  public abstract String execute(
+  /**
+   * Execute functionality of this command.
+   *
+   * @param server
+   * @param client
+   * @param args the arguments including the triggering command
+   * @return the command feedback
+   */
+  public abstract @NotNull String execute(
       @NotNull ServerConnection server,
       @NotNull ClientConnection client,
       String @NotNull ... args

@@ -39,6 +39,9 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Singleton accessor for the secure datastore.
+ */
 public enum SecureStorage {
   // Singleton. There should never be more than one secure storage instance.
   INSTANCE;
@@ -54,10 +57,23 @@ public enum SecureStorage {
   private KeyPair signingKeyPair;
   private SecretKeySpec keySpec;
 
+  /**
+   * Check whether the datastore exists.
+   *
+   * @return true if the datastore is initialized or the file is available on disk
+   */
   public boolean exists() {
     return initialized.get() || Files.exists(DATASTORE);
   }
 
+  /**
+   * Initialize the secure datastore.
+   *
+   * @param password the password used to decrypt the datastore
+   * @return true if the datastore is initialized
+   * @throws GeneralSecurityException if an issue occurs setting up the datastore
+   * @throws IOException if an issue occurs setting up the datastore
+   */
   public boolean init(char @NotNull [] password) throws GeneralSecurityException, IOException {
     // Only allow one initialization attempt to occur at a time.
     // Can reuse object as a lock because it isn't exposed.
@@ -66,6 +82,7 @@ public enum SecureStorage {
         throw new IllegalStateException("Already initialized!");
       }
 
+      // Digest password and then remove it from memory.
       MessageDigest digest = MessageDigest.getInstance(CryptoConstants.DIGEST);
       CharBuffer buffer = CharBuffer.wrap(password);
       ByteBuffer encoded = StandardCharsets.UTF_8.encode(buffer);
@@ -73,29 +90,42 @@ public enum SecureStorage {
       Arrays.fill(password, (char) 0);
       Arrays.fill(encoded.array(), (byte) 0);
 
+      // If the file exists, load it.
       if (exists()) {
         try {
           load(digest);
         } catch (SignatureException | BadPaddingException | InvalidKeySpecException e) {
+          // Usually invalid password.
           return false;
         }
         return initialized.compareAndSet(false, true);
       }
 
+      // Otherwise, generate new datastore.
+      // Generate salt and finish digest.
       random.nextBytes(salt);
       digest.update(salt);
       keySpec = new SecretKeySpec(digest.digest(), CryptoConstants.SECRET_KEY_SPEC);
 
+      // Generate a new keypair for signing.
       KeyPairGenerator keyGen = KeyPairGenerator.getInstance(CryptoConstants.SIG_SPEC);
       keyGen.initialize(CryptoConstants.SIG_SPEC_BITS, random);
       signingKeyPair = keyGen.generateKeyPair();
 
+      // Save the new data.
       save();
 
       return initialized.compareAndSet(false, true);
     }
   }
 
+  /**
+   * Load the existing datastore into memory using the given digest as a key.
+   *
+   * @param digest the digest
+   * @throws GeneralSecurityException if the file cannot be decrypted
+   * @throws IOException if the file cannot be read
+   */
   private void load(@NotNull MessageDigest digest) throws GeneralSecurityException, IOException {
     Decoder base64 = Base64.getDecoder();
     List<String> lines = Files.readAllLines(DATASTORE);
@@ -128,12 +158,13 @@ public enum SecureStorage {
 
     this.signingKeyPair = new KeyPair(publicKey, privateKey);
 
-    // Read signed CBC residue.
+    // Read signed CBC residue (and ignore trailing newlines).
     do {
       string = lines.remove(lines.size() - 1);
     } while (string.isBlank());
     byte[] signed = base64.decode(string.getBytes(StandardCharsets.UTF_8));
 
+    // Parse trusted identities from remaining lines.
     for (String line : lines) {
       String[] trusted = line.split(":");
       data = decrypt(decoder, iv, base64.decode(trusted[0].getBytes(StandardCharsets.UTF_8)));
@@ -143,9 +174,9 @@ public enum SecureStorage {
       PublicKey trustedKey = factory.generatePublic(encodedSpec);
 
       this.trustedIdentities.put(ident, trustedKey);
-
     }
 
+    // Verify signed CBC residue.
     Signature sig = Signature.getInstance(CryptoConstants.SIG_ALG);
     sig.initVerify(this.signingKeyPair.getPublic());
     sig.update(iv);
@@ -153,11 +184,21 @@ public enum SecureStorage {
       return;
     }
 
+    // If signature is invalid, reject anything that did load.
     this.trustedIdentities.clear();
     this.signingKeyPair = null;
     throw new SignatureException("Invalid password!");
   }
 
+  /**
+   * Helper method for decrypting noncontinuous CBC-encoded data.
+   *
+   * @param decoder the decoding cipher
+   * @param iv the IV or CBC residue
+   * @param data the data to decrypt
+   * @return the decrypted data
+   * @throws GeneralSecurityException if the data cannot be decrypted
+   */
   private byte[] decrypt(Cipher decoder, byte[] iv, byte[] data) throws  GeneralSecurityException {
     decoder.init(Cipher.DECRYPT_MODE, keySpec, new IvParameterSpec(iv));
     int blockSize = decoder.getBlockSize();
@@ -165,6 +206,12 @@ public enum SecureStorage {
     return decoder.doFinal(data);
   }
 
+  /**
+   * Save the datastore to disk.
+   *
+   * @throws GeneralSecurityException if the datastore cannot be encrypted
+   * @throws IOException if the datastore cannot be written
+   */
   private void save() throws GeneralSecurityException, IOException {
     // This should only be called from the user input thread, so it shouldn't need extra syncing.
     try (
@@ -224,6 +271,16 @@ public enum SecureStorage {
     }
   }
 
+
+  /**
+   * Helper method for encrypting noncontinuous CBC-encoded data.
+   *
+   * @param encoder the encoding cipher
+   * @param iv the IV or CBC residue
+   * @param data the data to encrypt
+   * @return the encrypted data
+   * @throws GeneralSecurityException if the data cannot be encrypted
+   */
   private byte[] encrypt(Cipher encoder, byte[] iv, byte[] data) throws GeneralSecurityException {
     encoder.init(Cipher.ENCRYPT_MODE, keySpec, new IvParameterSpec(iv));
     data = encoder.doFinal(data);
@@ -232,11 +289,19 @@ public enum SecureStorage {
     return data;
   }
 
+  /**
+   * Sign data using signing key.
+   *
+   * @param data the data to produce a signature for
+   * @return the signature
+   * @throws GeneralSecurityException if an error occurs while signing
+   */
   public byte @NotNull [] sign(byte @NotNull [] data) throws GeneralSecurityException {
     checkState();
     return sign0(data);
   }
 
+  ///  Helper method for signing that does not check if the datastore is loaded.
   private byte[] sign0(byte [] data) throws GeneralSecurityException {
     Signature sig = Signature.getInstance(CryptoConstants.SIG_ALG);
     sig.initSign(signingKeyPair.getPrivate(), random);
@@ -244,6 +309,14 @@ public enum SecureStorage {
     return sig.sign();
   }
 
+  /**
+   * Send a signed username to a remote.
+   *
+   * @param identifier the username
+   * @param remote the remote person
+   * @throws GeneralSecurityException if an issue occurs while encrypting or signing
+   * @throws IOException if a communication issue occurs
+   */
   public void encodeIdentity(
       @NotNull String identifier,
       @NotNull Remote remote
@@ -251,49 +324,71 @@ public enum SecureStorage {
     checkState();
 
     byte[] key = signingKeyPair.getPublic().getEncoded();
+    // Send public key in cleartext. It isn't secret, anyone who connects to us gets it.
     remote.sendRawData(key);
 
+    // Encode our username.
     byte[] data = identifier.getBytes(StandardCharsets.UTF_8);
     data = remote.encode(data, 0, data.length);
     remote.sendRawData(data);
 
+    // Send a signature for the encoded username.
     byte[] signed = sign(data);
     remote.sendRawData(signed);
   }
 
+  /**
+   * Receive a signed username from a remote.
+   *
+   * @param remote the remote person
+   * @param logger the logger to send errors to
+   * @throws GeneralSecurityException if an issue occurs while decrypting or verifying
+   * @throws IOException if a communication issue occurs
+   */
   public @NotNull Identity decodeIdentity(
       @NotNull Remote remote,
       @NotNull Logger logger
   ) throws GeneralSecurityException, IOException {
     checkState();
 
+    // Receive public key in cleartext.
     X509EncodedKeySpec keySpec = new X509EncodedKeySpec(remote.readRawData(logger));
-
     KeyFactory factory = KeyFactory.getInstance(CryptoConstants.SIG_SPEC);
     PublicKey clientKey = factory.generatePublic(keySpec);
 
+    // Receive encrypted username.
     byte[] data = remote.readRawData(logger);
 
-
+    // Prepare to check signature.
     Signature sig = Signature.getInstance(CryptoConstants.SIG_ALG);
     sig.initVerify(clientKey);
     sig.update(data);
 
+    // Verify signature.
     byte[] providedSignature = remote.readRawData(logger);
     if (!sig.verify(providedSignature)) {
       throw new SignatureException("Nope");
     }
 
+    // Decode username.
     data = remote.decode(data, 0, data.length);
     String identifier = new String(data, StandardCharsets.UTF_8);
 
-    // TODO are equals and hashcode identical for these?
-    //  may need to manually check entries.
+    // Check for trust.
     boolean trusted = trustedIdentities.containsEntry(identifier, clientKey);
 
+    // Establish identity.
     return new Identity(identifier, clientKey, trusted);
   }
 
+  /**
+   * Trust the identity of a remote.
+   *
+   * @param remote the remote person
+   * @return true if the person was not trusted before
+   * @throws GeneralSecurityException if an issue occurred saving the datastore
+   * @throws IOException if an issue occurred saving the datastore
+   */
   public boolean trust(@NotNull Remote remote) throws GeneralSecurityException, IOException {
     checkState();
 
@@ -310,6 +405,7 @@ public enum SecureStorage {
     return true;
   }
 
+  /// Helper for ensuring that storage is initialized.
   private void checkState() {
     if (!initialized.get()) {
       throw new IllegalStateException("SecureStorage not initialized!");

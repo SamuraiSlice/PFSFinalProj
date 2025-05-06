@@ -13,7 +13,6 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.logging.Formatter;
-import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.logging.StreamHandler;
@@ -64,9 +63,9 @@ public class Launcher {
   }
 
   private static Options getOptions() {
-    // TODO options for disabling server?
     Options options = new Options();
 
+    // -p or --port flag
     Option port = new Option("p", "port", true, "numeric internal server port");
     port.setRequired(true);
     options.addOption(port);
@@ -86,6 +85,7 @@ public class Launcher {
     Formatter formatter = new Formatter() {
       @Override
       public String format(LogRecord record) {
+        // Get logger name.
         String loggerName = record.getLoggerName();
         if (loggerName != null) {
           int lastSeparator = loggerName.lastIndexOf('.');
@@ -93,7 +93,10 @@ public class Launcher {
             loggerName = loggerName.substring(lastSeparator + 1);
           }
         }
+
         String message = record.getMessage();
+
+        // If this is a record of a throwable, print the stack trace too.
         Throwable thrown = record.getThrown();
         if (thrown != null) {
           ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -102,12 +105,15 @@ public class Launcher {
           }
           message += '\n' + output.toString(StandardCharsets.UTF_8);
         }
+
+        // [timestamp] [level] [name] content
         return String.format(
             "[%1$tF %1$tT] [%2$s] [%3$s] %4$s%n",
             new Date(record.getMillis()), record.getLevel(), loggerName, message);
       }
     };
 
+    // Like ConsoleHandler, but using System.out instead of System.err
     ROOT_LOGGER.addHandler(new StreamHandler(System.out, formatter) {
       @Override
       public void publish(LogRecord record) {

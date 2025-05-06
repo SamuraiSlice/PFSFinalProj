@@ -5,6 +5,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Manager for commands. Simplifies the lookup process.
+ */
 public class CommandManager {
 
   // Container for registered commands.

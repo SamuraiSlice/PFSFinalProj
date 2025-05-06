@@ -17,6 +17,9 @@ import javax.crypto.spec.DHParameterSpec;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+/**
+ * Abstraction representing a connection to a remote client or server.
+ */
 public abstract class Connection implements AutoCloseable {
 
   protected final Logger logger = Logger.getLogger(getClass().getName());
@@ -30,12 +33,27 @@ public abstract class Connection implements AutoCloseable {
     this.listener = listener;
   }
 
+  /**
+   * Get the identity in use on this connection.
+   *
+   * @return the identity
+   */
   public @NotNull String getIdentity() {
     return this.identity;
   }
 
+  /**
+   * Initiate connection.
+   */
   public abstract void open();
 
+  /**
+   * Handle a connection.
+   *
+   * @param socket the connected socket
+   * @throws GeneralSecurityException if a handshaking or decoding issue occurs
+   * @throws IOException if a communication issue occurs
+   */
   protected void handleConnection(@NotNull Socket socket)
       throws GeneralSecurityException, IOException {
     // TODO enable timeout and do keepalives
@@ -68,6 +86,15 @@ public abstract class Connection implements AutoCloseable {
     }
   }
 
+  /**
+   * Establish a shared secret.
+   *
+   * @param inputStream the remote input stream
+   * @param outputStream the remote output stream
+   * @return the shared secret
+   * @throws GeneralSecurityException if a handshaking issue occurs
+   * @throws IOException if a communication issue occurs
+   */
   protected abstract byte[] getSharedSecret(
       @NotNull DataInputStream inputStream,
       @NotNull DataOutputStream outputStream
