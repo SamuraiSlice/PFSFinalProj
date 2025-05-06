@@ -5,6 +5,8 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -56,7 +58,7 @@ public enum SecureStorage {
     return initialized.get() || Files.exists(DATASTORE);
   }
 
-  public boolean init(@NotNull String password) throws GeneralSecurityException, IOException {
+  public boolean init(char @NotNull [] password) throws GeneralSecurityException, IOException {
     // Only allow one initialization attempt to occur at a time.
     // Can reuse object as a lock because it isn't exposed.
     synchronized (initialized) {
@@ -65,7 +67,11 @@ public enum SecureStorage {
       }
 
       MessageDigest digest = MessageDigest.getInstance(CryptoConstants.DIGEST);
-      digest.update(password.getBytes(StandardCharsets.UTF_8));
+      CharBuffer buffer = CharBuffer.wrap(password);
+      ByteBuffer encoded = StandardCharsets.UTF_8.encode(buffer);
+      digest.update(encoded);
+      Arrays.fill(password, (char) 0);
+      Arrays.fill(encoded.array(), (byte) 0);
 
       if (exists()) {
         try {

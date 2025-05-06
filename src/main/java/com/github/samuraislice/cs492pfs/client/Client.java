@@ -59,7 +59,7 @@ public class Client implements AutoCloseable {
       System.out.print("Password: ");
     }
     try {
-      while (!SecureStorage.INSTANCE.init(scanner.nextLine())) {
+      while (!SecureStorage.INSTANCE.init(System.console().readPassword())) {
         System.out.print("Invalid password. Please enter password: ");
       }
     } catch (GeneralSecurityException | IOException e) {
