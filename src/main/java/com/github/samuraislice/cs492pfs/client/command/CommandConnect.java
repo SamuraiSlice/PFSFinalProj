@@ -20,7 +20,7 @@ public class CommandConnect extends Command {
     }
 
     // Handle existing server connection.
-    if (false && server.isAcceptingConnections()) { // TODO temp flag to leave server connectable (connect to self)
+    if (server.isAcceptingConnections()) {
       Remote remote = server.getRemote();
       if (remote != null) {
         return alreadyConnected(remote);
