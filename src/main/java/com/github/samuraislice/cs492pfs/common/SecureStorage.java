@@ -14,11 +14,16 @@ import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
+import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.SignatureException;
+import java.security.spec.EncodedKeySpec;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Base64.Decoder;
 import java.util.Base64.Encoder;
@@ -26,6 +31,7 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -43,7 +49,7 @@ public enum SecureStorage {
       HashMultimap.create()
   );
   private final byte[] salt = new byte[CryptoConstants.SALT_LEN];
-  private KeyPair keyPair;
+  private KeyPair signingKeyPair;
   private SecretKeySpec keySpec;
 
   public boolean exists() {
@@ -62,18 +68,21 @@ public enum SecureStorage {
       digest.update(password.getBytes(StandardCharsets.UTF_8));
 
       if (exists()) {
-        load(digest);
+        try {
+          load(digest);
+        } catch (SignatureException | BadPaddingException | InvalidKeySpecException e) {
+          return false;
+        }
         return initialized.compareAndSet(false, true);
       }
 
       random.nextBytes(salt);
       digest.update(salt);
-      byte[] finalDigest = digest.digest();
-      keySpec = new SecretKeySpec(finalDigest, CryptoConstants.SECRET_KEY_SPEC);
+      keySpec = new SecretKeySpec(digest.digest(), CryptoConstants.SECRET_KEY_SPEC);
 
       KeyPairGenerator keyGen = KeyPairGenerator.getInstance(CryptoConstants.SIG_SPEC);
       keyGen.initialize(CryptoConstants.SIG_SPEC_BITS, random);
-      keyPair = keyGen.generateKeyPair();
+      signingKeyPair = keyGen.generateKeyPair();
 
       save();
 
@@ -92,21 +101,62 @@ public enum SecureStorage {
     keySpec = new SecretKeySpec(digest.digest(), CryptoConstants.SECRET_KEY_SPEC);
     Cipher decoder = Cipher.getInstance(CryptoConstants.CIPHER_MODE);
 
-    // Read IV, finish cipher setup.
-    string = lines.remove(0);
-
     // Read IV and initialize decoder.
-    IvParameterSpec ivSpec = new IvParameterSpec(base64.decode(string.getBytes(StandardCharsets.UTF_8)));
+    string = lines.remove(0);
+    byte[] iv = base64.decode(string.getBytes(StandardCharsets.UTF_8));
+    IvParameterSpec ivSpec = new IvParameterSpec(iv);
     decoder.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
 
+    // Read public key, decode, and decrypt.
+    string = lines.remove(0);
+    byte[] data = decrypt(decoder, iv, base64.decode(string.getBytes(StandardCharsets.UTF_8)));
+    EncodedKeySpec encodedSpec = new X509EncodedKeySpec(data);
+    KeyFactory factory = KeyFactory.getInstance(CryptoConstants.SIG_SPEC);
+    PublicKey publicKey = factory.generatePublic(encodedSpec);
 
+    // Read private key, decode, and decrypt.
+    string = lines.remove(0);
+    data = decrypt(decoder, iv, base64.decode(string.getBytes(StandardCharsets.UTF_8)));
+    encodedSpec = new PKCS8EncodedKeySpec(data);
+    PrivateKey privateKey = factory.generatePrivate(encodedSpec);
 
-    // TODO
-    //  decrypt
-    //  pub
-    //  private
-    //  entries
-    //  verify
+    this.signingKeyPair = new KeyPair(publicKey, privateKey);
+
+    // Read signed CBC residue.
+    do {
+      string = lines.remove(lines.size() - 1);
+    } while (string.isBlank());
+    byte[] signed = base64.decode(string.getBytes(StandardCharsets.UTF_8));
+
+    for (String line : lines) {
+      String[] trusted = line.split(":");
+      data = decrypt(decoder, iv, base64.decode(trusted[0].getBytes(StandardCharsets.UTF_8)));
+      String ident = new String(data, StandardCharsets.UTF_8);
+      data = decrypt(decoder, iv, base64.decode(trusted[1].getBytes(StandardCharsets.UTF_8)));
+      encodedSpec = new X509EncodedKeySpec(data);
+      PublicKey trustedKey = factory.generatePublic(encodedSpec);
+
+      this.trustedIdentities.put(ident, trustedKey);
+
+    }
+
+    Signature sig = Signature.getInstance(CryptoConstants.SIG_ALG);
+    sig.initVerify(this.signingKeyPair.getPublic());
+    sig.update(iv);
+    if (sig.verify(signed)) {
+      return;
+    }
+
+    this.trustedIdentities.clear();
+    this.signingKeyPair = null;
+    throw new SignatureException("Invalid password!");
+  }
+
+  private byte[] decrypt(Cipher decoder, byte[] iv, byte[] data) throws  GeneralSecurityException {
+    decoder.init(Cipher.DECRYPT_MODE, keySpec, new IvParameterSpec(iv));
+    int blockSize = decoder.getBlockSize();
+    System.arraycopy(data, data.length - blockSize, iv, 0, blockSize);
+    return decoder.doFinal(data);
   }
 
   private void save() throws GeneralSecurityException, IOException {
@@ -132,22 +182,17 @@ public enum SecureStorage {
       writer.write(new String(base64.encode(iv), StandardCharsets.UTF_8));
       writer.write('\n');
 
-      // TODO verify that this actually works:
-      //  Ensure that every update pushes out all current blocks without finalizing
-      //  May need a helper method to get next IV based on last encoded data or something.
-      //  Also, at that point should sign an actual HMAC.
-
       // Write encoded public and private key.
-      writer.write(new String(base64.encode(encoder.update(keyPair.getPublic().getEncoded()))));
+      writer.write(new String(base64.encode(encrypt(encoder, iv, signingKeyPair.getPublic().getEncoded()))));
       writer.write('\n');
-      writer.write(new String(base64.encode(encoder.update(keyPair.getPrivate().getEncoded()))));
+      writer.write(new String(base64.encode(encrypt(encoder, iv, signingKeyPair.getPrivate().getEncoded()))));
       writer.write('\n');
 
       for (Entry<String, PublicKey> trusted : trustedIdentities.entries()) {
         // Encode handle.
         writer.write(
             new String(
-                base64.encode(encoder.update(trusted.getKey().getBytes(StandardCharsets.UTF_8))),
+                base64.encode(encrypt(encoder, iv, trusted.getKey().getBytes(StandardCharsets.UTF_8))),
                 StandardCharsets.UTF_8
             )
         );
@@ -158,7 +203,7 @@ public enum SecureStorage {
         // Encode public key.
         writer.write(
             new String(
-                base64.encode(encoder.update(trusted.getValue().getEncoded())),
+                base64.encode(encrypt(encoder, iv, trusted.getValue().getEncoded())),
                 StandardCharsets.UTF_8
             )
         );
@@ -166,20 +211,29 @@ public enum SecureStorage {
         writer.write('\n');
       }
 
-      // Write residue.
-      byte[] residue = encoder.doFinal();
-      writer.write(new String(base64.encode(residue), StandardCharsets.UTF_8));
-      writer.write('\n');
-
+      byte[] signed = sign0(iv);
       // Write signed residue.
-      writer.write(new String(base64.encode(sign(residue)), StandardCharsets.UTF_8));
+      String data = new String(base64.encode(signed), StandardCharsets.UTF_8);
+      writer.write(data);
     }
+  }
+
+  private byte[] encrypt(Cipher encoder, byte[] iv, byte[] data) throws GeneralSecurityException {
+    encoder.init(Cipher.ENCRYPT_MODE, keySpec, new IvParameterSpec(iv));
+    data = encoder.doFinal(data);
+    int blockSize = encoder.getBlockSize();
+    System.arraycopy(data, data.length - blockSize, iv, 0, blockSize);
+    return data;
   }
 
   public byte @NotNull [] sign(byte @NotNull [] data) throws GeneralSecurityException {
     checkState();
+    return sign0(data);
+  }
+
+  private byte[] sign0(byte [] data) throws GeneralSecurityException {
     Signature sig = Signature.getInstance(CryptoConstants.SIG_ALG);
-    sig.initSign(keyPair.getPrivate(), random);
+    sig.initSign(signingKeyPair.getPrivate(), random);
     sig.update(data);
     return sig.sign();
   }
@@ -190,7 +244,7 @@ public enum SecureStorage {
   ) throws GeneralSecurityException, IOException {
     checkState();
 
-    byte[] key = keyPair.getPublic().getEncoded();
+    byte[] key = signingKeyPair.getPublic().getEncoded();
     remote.sendRawData(key);
 
     byte[] data = identifier.getBytes(StandardCharsets.UTF_8);
