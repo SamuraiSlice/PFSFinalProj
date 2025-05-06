@@ -1,7 +1,10 @@
 .idea
 **.iml
+.vscode
 .classpath
 .project
 .settings
 .metadata
 **/target/
+**/dependency-reduced-pom.xml
+.datastore
