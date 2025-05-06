@@ -46,10 +46,7 @@ public class ServerConnection extends Connection {
 
   @Override
   public void open() {
-    if (!connectionThread.compareAndSet(null, new ServerThread())) {
-      // If the server thread is running already, deny.
-      throw new IllegalStateException("ServerConnection is already running!");
-    } else {
+    if (connectionThread.compareAndSet(null, new ServerThread())) {
       // Otherwise, start server thread.
       this.acceptingConnections.set(true);
       connectionThread.get().start();

@@ -25,6 +25,7 @@ public class CommandDisconnect extends Command {
 
     try {
       remote.disconnect();
+      server.open();
       return "Disconnected from " + remote.getIdentifier();
     } catch (IOException e) {
       // TODO logging

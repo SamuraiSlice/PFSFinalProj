@@ -49,10 +49,7 @@ public class ClientConnection extends Connection {
     if (address == null) {
       throw new IllegalStateException("Must set remote to connect!");
     }
-    if (!connectionThread.compareAndSet(null, new ClientThread())) {
-      // If the client thread is running already, deny.
-      throw new IllegalStateException("ClientConnection is already connected!");
-    } else {
+    if (connectionThread.compareAndSet(null, new ClientThread())) {
       connectionThread.get().start();
     }
   }
